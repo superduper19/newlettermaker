@@ -603,7 +603,7 @@ router.post('/modify', async (req, res) => {
 // POST /api/articles/summarize - Generate Summaries
 router.post('/summarize', async (req, res) => {
     try {
-        const { prompt, useRules, category } = req.body;
+        const { prompt, useRules, summaryRules, category } = req.body;
         
         if (!prompt) {
             return res.status(400).json({ error: 'Prompt is required' });
@@ -611,79 +611,50 @@ router.post('/summarize', async (req, res) => {
 
         console.log(`Generating summaries for ${category} with rules: ${useRules}`);
 
-        let systemPrompt = `You are a professional newsletter editor.
-        Your task is to summarize the provided articles based on the user's instructions.
-        
-        CRITICAL: You must return the result as a valid JSON object with the following schema:
-        {
-            "articles": [
-                {
-                    "url": "original article url",
-                    "accessible": true,
-                    "paywall": false,
-                    "summary": "The generated summary"
-                }
-            ]
-        }
-        
-        Ensure the "url" matches the input articles exactly.
-        "accessible" should be boolean true/false based on if you could read the content.
-        "paywall" should be boolean true/false if you detect a paywall.
-        "summary" should be the summary text.
-        
-        Do not include any markdown formatting (like \`\`\`json) outside the JSON structure. Just the raw JSON string.`;
+        let systemPrompt = `You are a professional newsletter editor. Summarize the provided articles based on the user's instructions.`;
 
-        if (useRules) {
+        if (useRules && summaryRules && summaryRules.trim()) {
+            systemPrompt += `\n\nHere are the specific rules you MUST follow:\n${summaryRules}`;
+        } else if (useRules) {
             try {
                 const fs = require('fs');
                 const path = require('path');
                 const rulesPath = path.join(__dirname, '../newsletter_summary_rules.md');
                 if (fs.existsSync(rulesPath)) {
                     const rules = fs.readFileSync(rulesPath, 'utf8');
-                    systemPrompt += `\n\nHere are the specific rules you MUST follow for the summaries:\n${rules}`;
-                } else {
-                    console.warn('newsletter_summary_rules.md not found');
+                    systemPrompt += `\n\nHere are the specific rules you MUST follow:\n${rules}`;
                 }
             } catch (err) {
                 console.error('Failed to read rules file:', err);
             }
         }
 
-        let content = '';
-        
-        // Use Claude Opus by default for high quality summaries
         const message = await anthropic.messages.create({
-            model: "claude-3-opus-20240229",
+            model: "claude-opus-4-6",
             max_tokens: 4000,
             system: systemPrompt,
             messages: [
                 { role: "user", content: prompt }
             ]
         });
-        content = message.content[0].text;
+        const content = message.content[0].text;
 
-        let result = {};
+        let articles = [];
         try {
-            result = extractJSON(content);
-            // If extractJSON returns an array, wrap it? The prompt asks for object with "articles" array.
-            // But extractJSON might just return the array if the model output only the array.
-            // Let's check if result has "articles" property.
-            if (Array.isArray(result)) {
-                // If model returned array directly
-                result = { articles: result };
-            } else if (!result.articles) {
-                // If model returned something else, try to fix or wrap
-                 // Maybe it returned a single object?
-                 result = { articles: [] }; 
+            const parsed = extractJSON(content);
+            if (Array.isArray(parsed)) {
+                articles = parsed;
+            } else if (parsed && parsed.articles) {
+                articles = parsed.articles;
             }
         } catch (e) {
-            console.error("Failed to parse AI JSON response:", content);
-            return res.status(500).json({ error: "Failed to parse AI response" });
+            // Not JSON — that's fine, return as plain text
         }
 
         res.json({
             success: true,
-            articles: result.articles || []
+            resultText: content,
+            articles
         });
 
     } catch (error) {

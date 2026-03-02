@@ -372,8 +372,8 @@ input:focus, textarea:focus, select:focus {
 /* Image View Table Layout */
 .img-table-header, .img-table-row {
     display: grid;
-    /* Columns: Article | MED | THC | CBD | INV | Search | Selected | Results */
-    grid-template-columns: 38ch 36px 36px 36px 36px minmax(160px, 1fr) 150px 1fr;
+    /* Columns: Article | MED | THC | CBD | INV | Search | Selected | Results | Actions */
+    grid-template-columns: 38ch 36px 36px 36px 36px minmax(160px, 1fr) 150px 1fr 90px;
     gap: 10px;
     padding: 10px 15px;
     border-bottom: 1px solid #eee;
@@ -420,6 +420,7 @@ input:focus, textarea:focus, select:focus {
     position: relative;
 }
 .img-col-results { min-width: 0; }
+.img-col-actions { display: flex; flex-direction: column; gap: 5px; justify-content: center; }
 
 .article-link-sm {
     font-size: 0.8rem;

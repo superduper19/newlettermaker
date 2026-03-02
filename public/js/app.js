@@ -170,6 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
             populateSavedDropdown();
             renderArticles();
         } else if (stepNumber == 3) {
+            populateSavedDropdown();
             renderImagesView();
         } else if (stepNumber == 4) {
             renderInspirationalView();
@@ -217,6 +218,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="img-col-search">Image Search</div>
                 <div class="img-col-selected">Selected</div>
                 <div class="img-col-results">Results</div>
+                <div class="img-col-actions">Actions</div>
             </div>
         `;
 
@@ -278,11 +280,46 @@ document.addEventListener('DOMContentLoaded', () => {
                             <span class="text-muted" style="font-size: 0.8rem;">Click Search</span>
                         </div>
                     </div>
+                    <div class="img-col-actions">
+                        <button class="btn btn-sm btn-outline" style="color: #f57c00; border-color: #f57c00; margin-bottom: 5px; width: 100%;" onclick="archiveArticle(${originalIndex})">Archive</button>
+                        <button class="btn btn-sm btn-outline" style="color: #d32f2f; border-color: #d32f2f; width: 100%;" onclick="removeArticle(${originalIndex})">Remove</button>
+                    </div>
                 </div>
             `;
             list.innerHTML += rowHtml;
         });
+
+        updateImageViewStats();
     };
+
+    function updateImageViewStats() {
+        const statsEl = document.getElementById('image-view-stats');
+        if (!statsEl) return;
+        const relevantArticles = articles.filter(a => (a.categories && a.categories.length > 0) || a.status === 'COOL FINDS' || a.status === 'M');
+        const counts = { MED: 0, THC: 0, CBD: 0, INV: 0 };
+        let validStatusCount = 0;
+        const validStatuses = ['Y', 'YM', 'COOL FINDS'];
+        relevantArticles.forEach(a => {
+            if (validStatuses.includes(a.status)) validStatusCount++;
+            if (a.ranks) {
+                ['MED', 'THC', 'CBD', 'INV'].forEach(cat => {
+                    if (a.ranks[cat]) counts[cat]++;
+                });
+            }
+        });
+        const sessionLabel = currentSessionName
+            ? `<span class="stat-item" style="background:#e8eaf6; color:#283593; font-weight:600;">${currentSessionName}</span>`
+            : '';
+        statsEl.innerHTML = `
+            ${sessionLabel}
+            <span class="stat-item" title="Articles with categories in this view">Total: ${relevantArticles.length}</span>
+            <span class="stat-item" style="background:#e0f7fa; color:#006064;">Selected: ${validStatusCount}</span>
+            <span class="stat-item" style="background:#e3f2fd; color:#0d47a1;">MED: ${counts.MED}</span>
+            <span class="stat-item" style="background:#e8f5e9; color:#1b5e20;">THC: ${counts.THC}</span>
+            <span class="stat-item" style="background:#fff3e0; color:#e65100;">CBD: ${counts.CBD}</span>
+            <span class="stat-item" style="background:#f3e5f5; color:#4a148c;">INV: ${counts.INV}</span>
+        `;
+    }
 
     // Search Images
     window.searchArticleImages = async (index) => {
@@ -510,132 +547,148 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!container) return;
 
         const content = newsletterContent[currentEditorTab];
-        
-        // Filter articles for this category and sort by rank (only top 3: 1, 2, 3)
-        const categoryArticles = articles.filter(a => {
-            if (!a.categories || !a.categories.includes(currentEditorTab)) return false;
-            const rank = a.ranks && a.ranks[currentEditorTab];
-            // Check for 1, 2, 3 (as strings or numbers)
-            return rank && ['1', '2', '3'].includes(String(rank));
-        }).sort((a, b) => {
-            const rankA = parseInt(a.ranks[currentEditorTab]);
-            const rankB = parseInt(b.ranks[currentEditorTab]);
+        let promptValue = content.prompt || '';
+
+        const categoryArticles = articles.filter(a =>
+            a.categories && a.categories.includes(currentEditorTab)
+        ).sort((a, b) => {
+            const rankA = parseInt((a.ranks && a.ranks[currentEditorTab]) || 99);
+            const rankB = parseInt((b.ranks && b.ranks[currentEditorTab]) || 99);
             return rankA - rankB;
         });
 
-        // Construct default prompt if not already set or empty
-        let promptValue = content.prompt || '';
-        if (!promptValue && categoryArticles.length > 0) {
-            promptValue = `Summarize these articles for the ${currentEditorTab} newsletter.\n\n`;
-            categoryArticles.forEach(a => {
-                promptValue += `Title: ${a.title}\nURL: ${a.url}\n\n`;
-            });
-            // Append the JSON schema instruction as requested
-            promptValue += `\nProvide the results in the following JSON schema:\n{ "articles": [ { "url": "", "accessible": true, "paywall": false, "summary": "" } ] }`;
-            
-            // Update state so we don't re-generate on every render
-            content.prompt = promptValue;
-            saveState();
-        }
+        const articleListHTML = categoryArticles.length > 0
+            ? categoryArticles.map((a, i) => {
+                const rank = (a.ranks && a.ranks[currentEditorTab]) || '';
+                return `<span style="font-size:0.8rem; color:#555;">${i + 1}. [${rank}] ${a.title.substring(0, 50)}${a.title.length > 50 ? '...' : ''}</span>`;
+            }).join('<br>')
+            : '<span style="font-size:0.8rem; color:#999;">No articles in this category yet.</span>';
 
-        const summariesHTML = content.summaries ? content.summaries.map((s, i) => `
-            <div class="summary-item" style="margin-bottom: 15px; padding: 10px; border: 1px solid #eee; border-radius: 4px; background: #fff;">
-                <div style="font-weight: bold; margin-bottom: 5px; color: #555;">Article ${i + 1}</div>
-                <textarea class="form-control" rows="3" onchange="updateSummary('${currentEditorTab}', ${i}, 'summary', this.value)" style="width: 100%;">${s.summary || ''}</textarea>
-                <div style="font-size: 0.8rem; margin-top: 5px; color: #666;">
-                    <a href="${s.url}" target="_blank">${s.url}</a>
-                    ${s.paywall ? '<span class="badge badge-warning ml-2">Paywall</span>' : ''}
-                    ${!s.accessible ? '<span class="badge badge-danger ml-2">Inaccessible</span>' : ''}
-                </div>
-            </div>
-        `).join('') : '<div class="text-muted" style="padding: 10px; font-style: italic;">No summaries generated yet. Click "Generate Summaries" above.</div>';
+        const summaryRulesValue = newsletterContent.summaryRules || '';
+        const resultValue = content.result || '';
 
         container.innerHTML = `
-            <div class="form-group">
-                <label>Intro Text (${currentEditorTab})</label>
-                <textarea id="editor-intro" rows="4" class="form-control" oninput="updateNewsletterContent('${currentEditorTab}', 'intro', this.value)">${content.intro || ''}</textarea>
-            </div>
-
-            <div class="card" style="margin-bottom: 20px; border: 1px solid #cce5ff;">
-                <div class="card-header" style="background: #e3f2fd; padding: 10px 15px;">
-                    <strong style="color: #0d47a1;">AI Summary Generation</strong>
-                </div>
-                <div class="card-body" style="padding: 15px;">
+            <div style="display: grid; grid-template-columns: 1fr 300px; gap: 20px; align-items: start;">
+                <div>
                     <div class="form-group">
-                        <label>Prompt (Top 3 Articles)</label>
-                        <textarea id="editor-prompt" rows="6" class="form-control" style="font-family: monospace; font-size: 0.9rem;" oninput="updateNewsletterContent('${currentEditorTab}', 'prompt', this.value)">${promptValue}</textarea>
+                        <label style="font-weight: 600;">Prompt</label>
+                        <textarea id="editor-prompt" rows="8" class="form-control" style="font-family: monospace; font-size: 0.9rem;" oninput="updateNewsletterContent('${currentEditorTab}', 'prompt', this.value)">${promptValue}</textarea>
                     </div>
 
-                    <div style="display: flex; align-items: center; gap: 15px; justify-content: space-between; flex-wrap: wrap;">
-                        <div class="rules-toggle-group" style="display: flex; align-items: center; gap: 15px;">
-                            <div class="custom-control custom-radio">
-                                <input type="radio" id="rules-on" name="useRulesGroup" class="custom-control-input" 
-                                    ${content.useRules !== false ? 'checked' : ''} 
-                                    onchange="updateNewsletterContent('${currentEditorTab}', 'useRules', true)">
-                                <label class="custom-control-label" for="rules-on">Use Summary Rules</label>
-                            </div>
-                            <div class="custom-control custom-radio">
-                                <input type="radio" id="rules-off" name="useRulesGroup" class="custom-control-input" 
-                                    ${content.useRules === false ? 'checked' : ''} 
-                                    onchange="updateNewsletterContent('${currentEditorTab}', 'useRules', false)">
-                                <label class="custom-control-label" for="rules-off">Custom (No Rules)</label>
-                            </div>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="text" id="bring-articles-input" placeholder="e.g. 1,2,3" style="width: 120px; padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem;">
+                            <button class="btn btn-secondary btn-sm" onclick="bringArticlesToPrompt('${currentEditorTab}')">Bring Articles</button>
                         </div>
-                        <button class="btn btn-primary" onclick="generateSummaries('${currentEditorTab}')">
-                            <span id="gen-btn-text-${currentEditorTab}">Generate Summaries</span>
+                        <div style="font-size: 0.78rem; color: #888; border-left: 1px solid #ddd; padding-left: 10px;">
+                            ${articleListHTML}
+                        </div>
+                    </div>
+
+                    <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px; justify-content: space-between; flex-wrap: wrap;">
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 0.9rem;">
+                                <input type="radio" name="useRulesGroup-${currentEditorTab}" ${content.useRules !== false ? 'checked' : ''} onchange="updateNewsletterContent('${currentEditorTab}', 'useRules', true)">
+                                Use Summary Rules
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 0.9rem;">
+                                <input type="radio" name="useRulesGroup-${currentEditorTab}" ${content.useRules === false ? 'checked' : ''} onchange="updateNewsletterContent('${currentEditorTab}', 'useRules', false)">
+                                Custom (No Rules)
+                            </label>
+                        </div>
+                        <button class="btn btn-primary" onclick="generateSummary('${currentEditorTab}')">
+                            <span id="gen-btn-text-${currentEditorTab}">Generate Summary</span>
                         </button>
                     </div>
                 </div>
-            </div>
 
-            <div class="form-group">
-                <label>Generated Summaries</label>
-                <div id="summaries-container-${currentEditorTab}" style="background: #f8f9fa; padding: 15px; border-radius: 6px;">
-                    ${summariesHTML}
+                <div>
+                    <div class="form-group">
+                        <label style="font-weight: 600;">Summary Rules</label>
+                        <textarea id="editor-summary-rules" rows="14" class="form-control" style="font-size: 0.85rem; background: #fffde7; border-color: #fbc02d;" oninput="updateSummaryRules(this.value)" placeholder="Persistent rules sent as system instructions to the AI...">${summaryRulesValue}</textarea>
+                        <div style="font-size: 0.7rem; color: #999; margin-top: 4px;">These rules persist across saves and categories.</div>
+                    </div>
                 </div>
             </div>
 
-            <div class="form-group">
-                <label>Outro Text (${currentEditorTab})</label>
-                <textarea id="editor-outro" rows="4" class="form-control" oninput="updateNewsletterContent('${currentEditorTab}', 'outro', this.value)">${content.outro || ''}</textarea>
+            <div class="form-group" style="margin-top: 10px;">
+                <label style="font-weight: 600;">Created Result</label>
+                <textarea id="editor-result" rows="10" class="form-control" style="font-size: 0.9rem; background: #f5f5f5;" oninput="updateNewsletterContent('${currentEditorTab}', 'result', this.value)" placeholder="The AI-generated result will appear here...">${resultValue}</textarea>
             </div>
-            
-            <div style="text-align: right; margin-top: 20px;">
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
                 <button class="btn btn-outline btn-sm" onclick="copyEditorContent('${currentEditorTab}')">Copy ${currentEditorTab} Content</button>
             </div>
         `;
     };
 
-    window.generateSummaries = async (category) => {
+    window.bringArticlesToPrompt = (category) => {
+        const input = document.getElementById('bring-articles-input');
+        if (!input) return;
+        const nums = input.value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+        if (nums.length === 0) return alert('Enter article numbers separated by commas (e.g. 1,2,3).');
+
+        const categoryArticles = articles.filter(a =>
+            a.categories && a.categories.includes(category)
+        ).sort((a, b) => {
+            const rankA = parseInt((a.ranks && a.ranks[category]) || 99);
+            const rankB = parseInt((b.ranks && b.ranks[category]) || 99);
+            return rankA - rankB;
+        });
+
+        const selected = nums.map(n => categoryArticles[n - 1]).filter(Boolean);
+        if (selected.length === 0) return alert('No matching articles for those numbers. Check the list on the right.');
+
+        let text = '';
+        selected.forEach(a => {
+            text += `Title: ${a.title}\nURL: ${a.url}\n\n`;
+        });
+
+        const promptEl = document.getElementById('editor-prompt');
+        if (promptEl) {
+            promptEl.value = (promptEl.value ? promptEl.value + '\n\n' : '') + text;
+            updateNewsletterContent(category, 'prompt', promptEl.value);
+        }
+    };
+
+    window.updateSummaryRules = (value) => {
+        newsletterContent.summaryRules = value;
+        saveState();
+    };
+
+    window.generateSummary = async (category) => {
         const prompt = document.getElementById('editor-prompt').value;
-        const useRules = document.getElementById('rules-on') ? document.getElementById('rules-on').checked : true;
+        const useRules = document.querySelector(`input[name="useRulesGroup-${category}"]:checked`);
+        const isUseRules = useRules ? useRules.nextSibling.textContent.trim().startsWith('Use') : true;
+        const summaryRules = isUseRules ? (newsletterContent.summaryRules || '') : '';
         const btnText = document.getElementById(`gen-btn-text-${category}`);
-        
+
         if (!prompt) return alert('Please enter a prompt.');
 
         btnText.textContent = 'Generating...';
-        
+
         try {
             const res = await fetch('/api/articles/summarize', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt, useRules, category })
+                body: JSON.stringify({ prompt, useRules: isUseRules, summaryRules, category })
             });
             const data = await res.json();
-            
-            if (data.success && data.articles) {
-                // Update state
-                newsletterContent[category].summaries = data.articles;
+
+            if (data.success) {
+                const resultText = data.resultText || (data.articles ? JSON.stringify(data.articles, null, 2) : '');
+                newsletterContent[category].result = resultText;
                 saveState();
-                renderEditorContent(); // Re-render to show summaries
+                const resultEl = document.getElementById('editor-result');
+                if (resultEl) resultEl.value = resultText;
             } else {
                 alert('Generation failed: ' + (data.error || 'Unknown error'));
             }
         } catch (e) {
             console.error(e);
-            alert('Error generating summaries.');
+            alert('Error generating summary.');
         } finally {
-            btnText.textContent = 'Generate Summaries';
+            btnText.textContent = 'Generate Summary';
         }
     };
 
@@ -653,31 +706,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.copyEditorContent = (category) => {
         const content = newsletterContent[category];
-        
-        let text = `--- ${category} NEWSLETTER ---\n\n`;
-        text += `${content.intro || ''}\n\n`;
-        
-        if (content.summaries && content.summaries.length > 0) {
-            content.summaries.forEach(s => {
-                text += `${s.summary}\n${s.url}\n\n`;
-            });
-        } else {
-            // Fallback to raw list if no summaries
-             const articlesList = articles.filter(a => 
-                (a.status === 'Y' || a.status === 'YM' || a.status === 'COOL FINDS') && 
-                a.categories && a.categories.includes(category)
-            ).sort((a, b) => {
-                const rankA = parseInt((a.ranks && a.ranks[category]) || 99);
-                const rankB = parseInt((b.ranks && b.ranks[category]) || 99);
-                return rankA - rankB;
-            });
-            
-            articlesList.forEach(a => {
-                text += `${a.title}\n${a.description}\n${a.url}\n\n`;
-            });
-        }
-        
-        text += `${content.outro || ''}\n`;
+        const text = content.result || content.prompt || '';
+
+        if (!text.trim()) return alert('Nothing to copy yet.');
 
         navigator.clipboard.writeText(text).then(() => {
             alert(`${category} content copied to clipboard!`);
@@ -687,7 +718,6 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     function renderEditorView() {
-        // Initial render for the current tab
         switchEditorTab(currentEditorTab);
     }
 
@@ -1062,6 +1092,10 @@ document.addEventListener('DOMContentLoaded', () => {
             articles.splice(index, 1);
             saveState();
             renderArticles();
+            const activeStep = document.querySelector('.step.active');
+            if (activeStep && activeStep.getAttribute('data-step') === '3') {
+                renderImagesView();
+            }
         }
     };
 
@@ -1072,6 +1106,10 @@ document.addEventListener('DOMContentLoaded', () => {
             articles.splice(index, 1);
             saveState();
             renderArticles();
+            const activeStep = document.querySelector('.step.active');
+            if (activeStep && activeStep.getAttribute('data-step') === '3') {
+                renderImagesView();
+            }
             alert('Article archived.');
         }
     };
@@ -1187,21 +1225,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function populateSavedDropdown() {
         const dropdown = document.getElementById('saved-sessions-dropdown');
-        if (!dropdown) return;
+        const dropdownStep3 = document.getElementById('saved-sessions-dropdown-step3');
 
         const sessions = getSavedSessions();
         const names = Object.keys(sessions).sort();
 
-        dropdown.innerHTML = '<option value="">-- Select --</option>';
-        names.forEach(name => {
+        const optionsHtml = names.map(name => {
             const s = sessions[name];
             const count = (s.articles || []).length;
             const date = s.savedAt ? new Date(s.savedAt).toLocaleDateString() : '';
-            const opt = document.createElement('option');
-            opt.value = name;
-            opt.textContent = `${name} (${count} articles, ${date})`;
-            dropdown.appendChild(opt);
-        });
+            return `<option value="${name}">${name} (${count} articles, ${date})</option>`;
+        }).join('');
+
+        if (dropdown) {
+            dropdown.innerHTML = '<option value="">-- Select --</option>' + optionsHtml;
+        }
+        if (dropdownStep3) {
+            dropdownStep3.innerHTML = '<option value="">-- Select --</option>' + optionsHtml;
+        }
 
         const hintEl = document.getElementById('state-load-hint');
         const textEl = document.getElementById('state-load-hint-text');
@@ -1212,6 +1253,24 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }
+
+    window.loadSessionFromStep3 = () => {
+        const dropdownStep3 = document.getElementById('saved-sessions-dropdown-step3');
+        const dropdown = document.getElementById('saved-sessions-dropdown');
+        if (dropdownStep3 && dropdown) {
+            dropdown.value = dropdownStep3.value;
+        }
+        loadSession();
+    };
+
+    window.deleteSessionFromStep3 = () => {
+        const dropdownStep3 = document.getElementById('saved-sessions-dropdown-step3');
+        const dropdown = document.getElementById('saved-sessions-dropdown');
+        if (dropdownStep3 && dropdown) {
+            dropdown.value = dropdownStep3.value;
+        }
+        deleteSession();
+    };
 
     window.refreshStateFromServer = async function () {
         const hintEl = document.getElementById('state-load-hint');

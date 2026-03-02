@@ -180,14 +180,26 @@
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <h2>Select Images</h2>
                             <div id="image-view-stats" class="article-stats">
+                                <span class="stat-item">Total: 0</span>
                             </div>
                         </div>
                         <p class="text-muted">Choose an image for each selected article.</p>
                     </div>
 
-                    <!-- Save bar matching article page -->
-                    <div style="display: flex; gap: 15px; align-items: center; padding: 12px 20px; background: #f0f4f8; border-bottom: 1px solid #ddd;">
-                        <button class="btn btn-primary btn-sm" onclick="saveSession()">Save</button>
+                    <!-- Save / Load Controls (same as Article View) -->
+                    <div style="padding: 15px 20px; background: #f0f4f8; border-bottom: 1px solid #ddd;">
+                        <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                            <button class="btn btn-primary btn-sm" onclick="saveSession()">Save</button>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <label style="font-size: 0.85rem; font-weight: 600; color: #555; white-space: nowrap;">Load Saved:</label>
+                                <select id="saved-sessions-dropdown-step3" style="padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; min-width: 200px;">
+                                    <option value="">-- Select --</option>
+                                </select>
+                                <button class="btn btn-secondary btn-sm" onclick="loadSessionFromStep3()">Load</button>
+                                <button class="btn btn-sm" style="color: #d32f2f; border: 1px solid #d32f2f; background: transparent; padding: 5px 10px; font-size: 0.8rem;" onclick="deleteSessionFromStep3()">Delete</button>
+                            </div>
+                            <button class="btn btn-primary btn-sm" type="button" onclick="refreshStateFromServer()" title="Load Week 1 and other saved sessions from Supabase">Refresh from server</button>
+                        </div>
                     </div>
                     
                     <div id="images-list" class="images-list" style="padding: 0;">
@@ -237,10 +249,13 @@
             </section>
 
             <section id="step-5" class="view">
-                <div class="card">
+                <div class="card" style="max-width: 1400px;">
                     <div class="card-header">
-                        <h2>Text Editor</h2>
-                        <p class="text-muted">Edit the newsletter content before finalizing.</p>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <h2>Text Editor</h2>
+                            <button class="btn btn-primary btn-sm" onclick="saveSession()">Save</button>
+                        </div>
+                        <p class="text-muted">Write prompts, import article links, generate summaries with AI.</p>
                     </div>
                     <div class="card-body">
                         <div class="tabs-container" style="margin-bottom: 20px; border-bottom: 1px solid #ddd;">
