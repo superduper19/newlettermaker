@@ -695,7 +695,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
 
             if (data.success) {
-                const resultText = data.resultText || (data.articles ? JSON.stringify(data.articles, null, 2) : '');
+                const resultText = data.resultText || '';
                 newsletterContent[category].result = resultText;
                 saveState();
                 const resultEl = document.getElementById('editor-result');

@@ -643,22 +643,9 @@ router.post('/summarize', async (req, res) => {
         });
         const content = message.content[0].text;
 
-        let articles = [];
-        try {
-            const parsed = extractJSON(content);
-            if (Array.isArray(parsed)) {
-                articles = parsed;
-            } else if (parsed && parsed.articles) {
-                articles = parsed.articles;
-            }
-        } catch (e) {
-            // Not JSON — that's fine, return as plain text
-        }
-
         res.json({
             success: true,
-            resultText: content,
-            articles
+            resultText: content
         });
 
     } catch (error) {
