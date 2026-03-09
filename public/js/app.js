@@ -702,6 +702,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
 
                 <div>
+                    <div id="editor-articles-list" style="margin-bottom: 15px; font-size: 0.85rem;"></div>
                     <div class="form-group">
                         <label style="font-weight: 600;">Summary Rules</label>
                         <textarea id="editor-summary-rules" rows="14" class="form-control" style="font-size: 0.85rem; background: #fffde7; border-color: #fbc02d;" oninput="updateSummaryRules(this.value)" placeholder="Persistent rules sent as system instructions to the AI...">${summaryRulesValue}</textarea>
@@ -721,6 +722,14 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         const templateEl = document.getElementById('editor-template');
         if (templateEl) templateEl.value = templateValue || '';
+        const listEl = document.getElementById('editor-articles-list');
+        if (listEl && typeof getArticlesForCategory === 'function') {
+            const catArticles = getArticlesForCategory(currentEditorTab);
+            const listHtml = catArticles.length
+                ? catArticles.map((a, i) => (i + 1) + '. ' + (a.title || 'Untitled').replace(/</g, '&lt;').substring(0, 48) + ((a.title || '').length > 48 ? '…' : '')).join('<br>')
+                : '<span class="text-muted">No articles with ' + currentEditorTab + ' rank.</span>';
+            listEl.innerHTML = '<label style="font-weight: 600;">Articles for ' + currentEditorTab + '</label><div style="max-height: 200px; overflow-y: auto; margin-top: 6px; line-height: 1.4;">' + listHtml + '</div><div style="font-size: 0.7rem; color: #999; margin-top: 4px;">Use numbers above in &quot;Bring Articles&quot; (e.g. 1,2,3).</div>';
+        }
     };
 
     window.bringArticlesToPrompt = (category) => {
@@ -729,16 +738,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const nums = input.value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && n > 0);
         if (nums.length === 0) return alert('Enter valid article numbers separated by commas (e.g. 1,2,3).');
 
-        const categoryArticles = articles.filter(a =>
-            a.categories && a.categories.includes(category)
-        ).sort((a, b) => {
-            const rankA = parseInt((a.ranks && a.ranks[category]) || 99);
-            const rankB = parseInt((b.ranks && b.ranks[category]) || 99);
-            return rankA - rankB;
-        });
+        const categoryArticles = getArticlesForCategory(category);
 
         const selected = nums.map(n => categoryArticles[n - 1]).filter(Boolean);
-        if (selected.length === 0) return alert('No matching articles for those numbers. Check the numbered list on the right.');
+        if (selected.length === 0) return alert('No matching articles for those numbers. Use the numbered list for ' + category + ' (right side).');
 
         const urls = selected.map(a => a.url).join('\n');
 
@@ -1018,18 +1021,11 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     function buildArticlesHtml(category) {
-        // Filter unique articles by URL to avoid duplicates in the generated newsletter HTML
         const seenUrls = new Set();
-        const relevant = articles.filter(a => {
-            if (!['Y', 'YM', 'COOL FINDS'].includes(a.status)) return false;
-            if (!(a.categories && a.categories.includes(category))) return false;
+        const relevant = getArticlesForCategory(category).filter(a => {
             if (a.url && seenUrls.has(a.url)) return false;
             if (a.url) seenUrls.add(a.url);
             return true;
-        }).sort((a, b) => {
-            const rA = parseInt((a.ranks && a.ranks[category]) || 99);
-            const rB = parseInt((b.ranks && b.ranks[category]) || 99);
-            return rA - rB;
         });
         return relevant.map(a => `
             <div class="article-item">
@@ -1526,8 +1522,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const disabledStyle = isStatusValid ? '' : 'opacity: 0.5; cursor: not-allowed;';
 
             const categoryInputs = ['MED', 'THC', 'CBD', 'INV'].map(cat => {
-                let rank = (article.ranks && article.ranks[cat]) || (article.categories && article.categories.includes(cat) ? 'Y' : '');
-                if (rank === 1 || rank === '1') rank = 'Y';
+                let rank = (article.ranks && (article.ranks[cat] ?? article.ranks[cat.toLowerCase()])) ?? (article.categories && article.categories.includes(cat) ? 'Y' : '');
+                // Same resolution as getRankForSort so display and sort match (incl. lowercase keys)
                 
                 return `
                     <div class="col-cat">
@@ -1746,7 +1742,40 @@ document.addEventListener('DOMContentLoaded', () => {
         updateStats(); // Refresh stats
     };
 
-    // Sort Articles (sortKey: 'MED'|'THC'|'CBD'|'INV' for category, or 'status' for status)
+    // Sort order for MED/THC/CBD/INV: lowest numbers first, then cool finds, then Y, YM, Maybe (M), No, then empty.
+    const RANK_SORT_ORDER = {
+        'COOL FINDS': 50,
+        'LATER COOL': 51,
+        'Y': 52,
+        'YM': 53,
+        'M': 54,
+        'NO': 55
+    };
+    function rankToSortValue(rank) {
+        if (rank === undefined || rank === null) return 999;
+        const s = String(rank).trim();
+        if (!s) return 999;
+        const n = parseInt(s, 10);
+        if (!isNaN(n)) return n;  // numbers 1, 2, 3... first (lowest first)
+        const u = s.toUpperCase();
+        if (RANK_SORT_ORDER[u] !== undefined) return RANK_SORT_ORDER[u];
+        if (u.startsWith('COOL')) return RANK_SORT_ORDER['COOL FINDS'];
+        if (u.startsWith('LATER')) return RANK_SORT_ORDER['LATER COOL'];
+        return 999;
+    }
+
+    // Effective rank for sorting: ranks[cat] or categories.includes(cat)->'Y'. Keep numbers as-is so 1,2,3 sort first.
+    function getRankForSort(article, cat) {
+        if (!article.ranks) {
+            if (article.categories && article.categories.includes(cat)) return 'Y';
+            return '';
+        }
+        let r = article.ranks[cat] ?? article.ranks[cat.toLowerCase()] ?? '';
+        if (!r && article.categories && article.categories.includes(cat)) r = 'Y';
+        return r;
+    }
+
+    // Sort Articles: sortKey 'status' | 'MED' | 'THC' | 'CBD' | 'INV'. MED/THC/CBD/INV = by that rank ascending (lowest first).
     const STATUS_ORDER = ['Y', 'YM', 'M', 'NO', 'COOL FINDS', 'LATER COOL'];
     window.sortArticles = (sortKey) => {
         if (!articles || articles.length === 0) return;
@@ -1760,18 +1789,53 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (orderA !== orderB) return orderA - orderB;
                 return (a.status || '').localeCompare(b.status || '');
             });
-        } else {
-            // Sort by boolean: those having the category come first
+        } else if (['MED', 'THC', 'CBD', 'INV'].includes(sortKey)) {
+            const tieOrder = ['MED', 'THC', 'CBD', 'INV'].filter(c => c !== sortKey);
             articles.sort((a, b) => {
-                const hasA = a.categories && a.categories.includes(sortKey);
-                const hasB = b.categories && b.categories.includes(sortKey);
-                if (hasA === hasB) return 0;
-                return hasA ? -1 : 1;
+                const rA = rankToSortValue(getRankForSort(a, sortKey));
+                const rB = rankToSortValue(getRankForSort(b, sortKey));
+                if (rA !== rB) return rA - rB;
+                for (const cat of tieOrder) {
+                    const tA = rankToSortValue(getRankForSort(a, cat));
+                    const tB = rankToSortValue(getRankForSort(b, cat));
+                    if (tA !== tB) return tA - tB;
+                }
+                return (a.title || '').localeCompare(b.title || '');
             });
         }
-        saveState(); // Save sorted order
+        saveState();
         renderArticles();
     };
+
+    // Sort by MED, then THC, then CBD, then INV (lowest number first). Uses same effective rank as display.
+    window.sortByRanks = () => {
+        if (!articles || articles.length === 0) return;
+        const order = ['MED', 'THC', 'CBD', 'INV'];
+        articles.sort((a, b) => {
+            for (const cat of order) {
+                const rA = rankToSortValue(getRankForSort(a, cat));
+                const rB = rankToSortValue(getRankForSort(b, cat));
+                if (rA !== rB) return rA - rB;
+            }
+            return (a.title || '').localeCompare(b.title || '');
+        });
+        saveState();
+        renderArticles();
+    };
+
+    // Articles for a category in display order: same filter + sort as table (numbers 1,2,3 first, then Y, etc.).
+    function getArticlesForCategory(category) {
+        return articles.filter(a => {
+            if (!['Y', 'YM', 'COOL FINDS', 'LATER COOL'].includes(a.status)) return false;
+            const rank = getRankForSort(a, category);
+            return rank !== '' && rank !== undefined;
+        }).sort((a, b) => {
+            const rA = rankToSortValue(getRankForSort(a, category));
+            const rB = rankToSortValue(getRankForSort(b, category));
+            if (rA !== rB) return rA - rB;
+            return (a.title || '').localeCompare(b.title || '');
+        });
+    }
 
     function updateStats() {
         const statsEl = document.getElementById('article-stats');

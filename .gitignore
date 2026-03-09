@@ -8,3 +8,4 @@ debug_dump.json
 .DS_Store
 
 .vercel
+backups/

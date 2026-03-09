@@ -285,7 +285,31 @@ input:focus, textarea:focus, select:focus {
     position: sticky;
     top: 0;
     z-index: 10;
-    align-items: center; /* Keep header centered */
+    align-items: center;
+}
+
+/* Nudge header labels right so they sit above the column content */
+.articles-table-header .col-date,
+.articles-table-header .col-paywall,
+.articles-table-header .col-status {
+    padding-left: 8px;
+    box-sizing: border-box;
+}
+.articles-table-header .col-cat {
+    padding-left: calc(12px + 3ch);
+    box-sizing: border-box;
+}
+.articles-table-header .col-keyword {
+    padding-left: calc(10px + 3ch);
+    box-sizing: border-box;
+}
+.articles-table-header .col-actions {
+    padding-left: 10px;
+    box-sizing: border-box;
+}
+.articles-table-header .col-article {
+    padding-left: 6px;
+    box-sizing: border-box;
 }
 
 .header-sort {

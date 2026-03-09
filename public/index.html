@@ -147,13 +147,14 @@
                         <div id="step2-query-status" style="font-size: 0.85rem; color: #4caf50; font-weight: 500; margin-top: 5px; display: none;"></div>
                     </div>
 
-                    <!-- Add article + Batch filter -->
+                    <!-- Add article + Batch filter + Sort -->
                     <div style="margin-bottom: 10px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
                         <button type="button" class="btn btn-primary btn-sm" onclick="openAddArticleModal()">+ Add article</button>
                         <label style="font-size: 0.8rem; color: #555;">Batch:</label>
                         <select id="batch-filter-select" onchange="setBatchFilter(this.value); renderArticles();" style="padding: 4px 8px; font-size: 0.85rem;">
                             <option value="">All</option>
                         </select>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="sortByRanks()" title="Sort by MED, then THC, then CBD, then INV (lowest number first)">Sort</button>
                     </div>
                     <!-- Articles Table Header -->
                 <div class="articles-table-header">
