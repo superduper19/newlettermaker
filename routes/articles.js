@@ -603,10 +603,13 @@ router.post('/modify', async (req, res) => {
 // POST /api/articles/summarize - Generate Summaries (supports Anthropic or Gemini)
 router.post('/summarize', async (req, res) => {
     try {
-        const { prompt, useRules, summaryRules, category, model } = req.body;
+        const { prompt, useRules, summaryRules, category, model, articles } = req.body;
         
         if (!prompt) {
             return res.status(400).json({ error: 'Prompt is required' });
+        }
+        if (!Array.isArray(articles) || articles.length === 0) {
+            return res.status(400).json({ error: 'Articles are required for category summary generation' });
         }
 
         const useGemini = (model && String(model).toLowerCase().includes('gemini')) || (!process.env.ANTHROPIC_API_KEY && (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY));
@@ -622,7 +625,15 @@ router.post('/summarize', async (req, res) => {
 
         console.log(`Generating summaries for ${category} with rules: ${useRules} (${useGemini ? 'Gemini' : 'Claude'})`);
 
-        let systemPrompt = `You are a professional newsletter editor. Summarize the provided articles based on the user's instructions.`;
+        let systemPrompt = `You are a professional newsletter editor. Create a newsletter-ready summary for the provided category articles only.
+
+Write exactly 6 to 7 short lines total.
+Each line should be concise, natural, and publication-ready.
+Only use the fetched article content and article metadata provided by the user.
+Do not use outside knowledge.
+Do not mention URLs in the output.
+Focus on the most important developments across the provided articles for the selected category.
+If some links could not be accessed, briefly note that in one short line.`;
 
         if (useRules && summaryRules && summaryRules.trim()) {
             systemPrompt += `\n\nHere are the specific rules you MUST follow:\n${summaryRules}`;
@@ -640,19 +651,56 @@ router.post('/summarize', async (req, res) => {
             }
         }
 
+        const articleInputs = articles.map(a => ({
+            title: a.title || '',
+            url: a.url || '',
+            date: a.date || '',
+            description: a.description || ''
+        }));
+
+        const fetchedArticles = await Promise.all(articleInputs.map(async (article) => {
+            const inspected = await verifyAndAnalyzeUrl(article.url);
+            return {
+                ...article,
+                accessible: !!inspected.isValid,
+                readable: !!inspected.isReadable,
+                content: inspected.content || ''
+            };
+        }));
+
+        const articlePayload = fetchedArticles.map((article, index) => ({
+            index: index + 1,
+            title: article.title,
+            url: article.url,
+            date: article.date,
+            description: article.description,
+            accessible: article.accessible,
+            readable: article.readable,
+            content: article.content ? article.content.substring(0, 6000) : ''
+        }));
+
+        const userMessage = [
+            `Category: ${category}`,
+            'User prompt:',
+            prompt,
+            '',
+            'Fetched articles:',
+            JSON.stringify(articlePayload, null, 2)
+        ].join('\n');
+
         let content = '';
         if (useGemini) {
-            const geminiModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
-            const fullPrompt = `${systemPrompt}\n\nUser content to summarize:\n\n${prompt}`;
+            const geminiModel = genAI.getGenerativeModel({ model: getApiModelId(model || 'gemini-flash-3-0') });
+            const fullPrompt = `${systemPrompt}\n\nUser content to summarize:\n\n${userMessage}`;
             const result = await geminiModel.generateContent(fullPrompt);
             content = result.response.text();
         } else {
             const message = await anthropic.messages.create({
-                model: "claude-opus-4-6",
+                model: getApiModelId(model || 'claude-opus-4-6'),
                 max_tokens: 4000,
                 system: systemPrompt,
                 messages: [
-                    { role: "user", content: prompt }
+                    { role: "user", content: userMessage }
                 ]
             });
             content = message.content[0].text;

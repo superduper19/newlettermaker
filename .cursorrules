@@ -1,0 +1,3 @@
+create logs only in folder "logs"
+dont change the original language of code
+always modify in a way that it runs local and published both.

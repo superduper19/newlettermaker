@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let archivedArticles = [];
     let laterCoolArticles = [];
     let inspirationalImages = [];
+    let inspirationalLibraryImages = [];
     let newsletterContent = {
         MED: { intro: '', outro: '' },
         THC: { intro: '', outro: '' },
@@ -12,8 +13,13 @@ document.addEventListener('DOMContentLoaded', () => {
         templates: { MED: '', THC: '', CBD: '', INV: '' }
     };
     let currentEditorTab = 'MED';
+    let currentConfirmationTab = 'MED';
     let lastGeneratedNewsletter = null;
+    const confirmationTemplateCache = {};
+    const confirmationRenderedHtml = { MED: '', THC: '', CBD: '', INV: '' };
+    let confirmationInspirationalImage = '';
     let batchFilter = ''; // '' = all, or addedAt ISO string to show only that batch
+    const INSPIRATIONAL_LIBRARY_CACHE_KEY = 'newsletter_inspirational_library';
 
     // Load State: first from LocalStorage (instant), then from Supabase if configured (overwrites)
     try {
@@ -30,6 +36,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const nc = data.newsletterContent || { MED: { intro: '', outro: '' }, THC: { intro: '', outro: '' }, CBD: { intro: '', outro: '' }, INV: { intro: '', outro: '' } };
                 newsletterContent = { ...nc, templates: nc.templates || { MED: '', THC: '', CBD: '', INV: '' } };
             }
+        }
+        const savedLibrary = localStorage.getItem(INSPIRATIONAL_LIBRARY_CACHE_KEY);
+        if (savedLibrary) {
+            inspirationalLibraryImages = JSON.parse(savedLibrary);
         }
     } catch (e) {
         console.error('Failed to load state', e);
@@ -185,6 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderImagesView();
         } else if (stepNumber == 4) {
             renderInspirationalView();
+            loadInspirationalLibrary();
         } else if (stepNumber == 5) {
             renderEditorView();
         } else if (stepNumber == 6) {
@@ -412,6 +423,47 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    window.searchAllArticleImages = async () => {
+        const relevantIndexes = articles
+            .map((article, index) => ({ article, index }))
+            .filter(({ article }) => (article.categories && article.categories.length > 0) || article.status === 'COOL FINDS' || article.status === 'M')
+            .map(({ index }) => index);
+
+        if (relevantIndexes.length === 0) {
+            return alert('No articles available in Image View.');
+        }
+
+        const btn = document.querySelector('[onclick="searchAllArticleImages()"]');
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = `Searching 0/${relevantIndexes.length}...`;
+        }
+
+        let searched = 0;
+
+        try {
+            for (const index of relevantIndexes) {
+                const article = articles[index];
+                if (!article.imageSearchQuery) {
+                    const words = (article.title || '').split(' ').filter(w => w.length > 3);
+                    article.imageSearchQuery = words.slice(0, 2).join(' ');
+                }
+
+                await searchArticleImages(index);
+                searched++;
+
+                if (btn) {
+                    btn.textContent = `Searching ${searched}/${relevantIndexes.length}...`;
+                }
+            }
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Search All';
+            }
+        }
+    };
+
     // Select Image
     window.selectImage = (index, url) => {
         articles[index].image = url;
@@ -501,6 +553,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- STEP 4: INSPIRATIONAL IMAGES ---
 
+    async function loadInspirationalLibrary() {
+        const grid = document.getElementById('insp-gallery-grid');
+        if (grid && inspirationalLibraryImages.length === 0) {
+            grid.innerHTML = '<div class="grid-placeholder">Loading uploaded images...</div>';
+        }
+
+        try {
+            const res = await fetch('/api/images/inspirational-library');
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to load uploaded images');
+            }
+            inspirationalLibraryImages = data.images || [];
+            localStorage.setItem(INSPIRATIONAL_LIBRARY_CACHE_KEY, JSON.stringify(inspirationalLibraryImages));
+        } catch (e) {
+            console.error(e);
+            if (grid && inspirationalLibraryImages.length === 0) {
+                grid.innerHTML = '<div class="grid-placeholder">Could not load uploaded images.</div>';
+            }
+        }
+
+        renderInspirationalView();
+    }
+
     window.searchInspirational = async () => {
         const query = document.getElementById('insp-search-query').value;
         if (!query) return alert('Please enter a search term');
@@ -562,7 +638,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.success && data.url) {
                 inspirationalImages.push(data.url);
                 saveState();
-                renderInspirationalView();
+                await loadInspirationalLibrary();
                 const pubMsg = data.published ? ' (published to GoDaddy)' : ' (local only — FTP not configured)';
                 if (status) status.textContent = 'Uploaded' + pubMsg;
                 if (data.ftpError && status) status.textContent += ' FTP error: ' + data.ftpError;
@@ -582,7 +658,9 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.selectInspirationalImage = (url) => {
-        inspirationalImages.push(url);
+        if (!inspirationalImages.includes(url)) {
+            inspirationalImages.push(url);
+        }
         saveState();
         renderInspirationalView();
     };
@@ -593,45 +671,187 @@ document.addEventListener('DOMContentLoaded', () => {
         renderInspirationalView();
     };
 
+    window.deleteInspirationalLibraryImage = async (url) => {
+        if (!confirm('Delete this uploaded inspirational image from the server library?')) return;
+
+        try {
+            const res = await fetch('/api/images/inspirational-library', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Delete failed');
+            }
+
+            inspirationalImages = inspirationalImages.filter(img => img !== url);
+            inspirationalLibraryImages = inspirationalLibraryImages.filter(img => img.url !== url);
+            localStorage.setItem(INSPIRATIONAL_LIBRARY_CACHE_KEY, JSON.stringify(inspirationalLibraryImages));
+            saveState();
+            await loadInspirationalLibrary();
+        } catch (e) {
+            console.error(e);
+            alert('Failed to delete uploaded image: ' + e.message);
+        }
+    };
+
     function renderInspirationalView() {
+        const galleryGrid = document.getElementById('insp-gallery-grid');
         const selectedGrid = document.getElementById('selected-insp-grid');
-        if (!selectedGrid) return;
+        if (!galleryGrid || !selectedGrid) return;
+
+        galleryGrid.innerHTML = '';
+        if (inspirationalLibraryImages.length === 0) {
+            galleryGrid.innerHTML = '<div class="grid-placeholder">No uploaded inspirational images yet.</div>';
+        } else {
+            inspirationalLibraryImages.forEach(({ url, name }) => {
+                const div = document.createElement('div');
+                div.style.position = 'relative';
+
+                const imgEl = document.createElement('img');
+                imgEl.src = url;
+                imgEl.className = 'thumbnail-img';
+                imgEl.title = name || 'Uploaded image';
+                imgEl.onclick = () => selectInspirationalImage(url);
+
+                const actions = document.createElement('div');
+                actions.style.position = 'absolute';
+                actions.style.left = '5px';
+                actions.style.right = '5px';
+                actions.style.bottom = '5px';
+                actions.style.display = 'flex';
+                actions.style.gap = '6px';
+
+                const selectBtn = document.createElement('button');
+                selectBtn.textContent = 'Select';
+                selectBtn.className = 'btn btn-primary btn-sm';
+                selectBtn.style.flex = '1';
+                selectBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    selectInspirationalImage(url);
+                };
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.className = 'btn btn-sm';
+                deleteBtn.style.flex = '1';
+                deleteBtn.style.background = 'rgba(211, 47, 47, 0.92)';
+                deleteBtn.style.color = '#fff';
+                deleteBtn.style.border = 'none';
+                deleteBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    deleteInspirationalLibraryImage(url);
+                };
+
+                actions.appendChild(selectBtn);
+                actions.appendChild(deleteBtn);
+                div.appendChild(imgEl);
+                div.appendChild(actions);
+                galleryGrid.appendChild(div);
+            });
+        }
         
         selectedGrid.innerHTML = '';
         if (inspirationalImages.length === 0) {
             selectedGrid.innerHTML = '<div class="grid-placeholder">No images selected.</div>';
-            return;
+        } else {
+            inspirationalImages.forEach((url, index) => {
+                const div = document.createElement('div');
+                div.style.position = 'relative';
+
+                const imgEl = document.createElement('img');
+                imgEl.src = url;
+                imgEl.className = 'thumbnail-img';
+                
+                const removeBtn = document.createElement('button');
+                removeBtn.innerHTML = '&times;';
+                removeBtn.style.position = 'absolute';
+                removeBtn.style.top = '5px';
+                removeBtn.style.right = '5px';
+                removeBtn.style.background = 'rgba(255,0,0,0.8)';
+                removeBtn.style.color = '#fff';
+                removeBtn.style.border = 'none';
+                removeBtn.style.borderRadius = '50%';
+                removeBtn.style.width = '20px';
+                removeBtn.style.height = '20px';
+                removeBtn.style.cursor = 'pointer';
+                removeBtn.onclick = () => removeInspirationalImage(index);
+
+                div.appendChild(imgEl);
+                div.appendChild(removeBtn);
+                selectedGrid.appendChild(div);
+            });
         }
-
-        inspirationalImages.forEach((url, index) => {
-            const div = document.createElement('div');
-            div.style.position = 'relative';
-
-            const imgEl = document.createElement('img');
-            imgEl.src = url;
-            imgEl.className = 'thumbnail-img';
-            
-            const removeBtn = document.createElement('button');
-            removeBtn.innerHTML = '&times;';
-            removeBtn.style.position = 'absolute';
-            removeBtn.style.top = '5px';
-            removeBtn.style.right = '5px';
-            removeBtn.style.background = 'rgba(255,0,0,0.8)';
-            removeBtn.style.color = '#fff';
-            removeBtn.style.border = 'none';
-            removeBtn.style.borderRadius = '50%';
-            removeBtn.style.width = '20px';
-            removeBtn.style.height = '20px';
-            removeBtn.style.cursor = 'pointer';
-            removeBtn.onclick = () => removeInspirationalImage(index);
-
-            div.appendChild(imgEl);
-            div.appendChild(removeBtn);
-            selectedGrid.appendChild(div);
-        });
     }
 
     // --- STEP 5: TEXT EDITOR ---
+
+    function escapeHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function buildCategoryPrompt(category) {
+        const categoryArticles = getArticlesForCategory(category);
+        if (categoryArticles.length === 0) {
+            return `CATEGORY: ${category}\nNo articles currently ranked for this category.`;
+        }
+
+        const articleLines = categoryArticles.map((article, index) => {
+            const title = article.title || 'Untitled';
+            const url = article.url || '';
+            return `${index + 1}. ${title}\n${url}`;
+        }).join('\n\n');
+
+        return [
+            `CATEGORY: ${category}`,
+            'Use the article links below as the only source set for this category summary.',
+            'Create a strong 6-7 line newsletter-ready summary for this category.',
+            '',
+            articleLines
+        ].join('\n');
+    }
+
+    function mergePromptWithCategoryLinks(existingPrompt, category) {
+        const promptBlock = buildCategoryPrompt(category);
+        const startMarker = `[[AUTO_CATEGORY_LINKS_${category}_START]]`;
+        const endMarker = `[[AUTO_CATEGORY_LINKS_${category}_END]]`;
+        const wrappedBlock = `${startMarker}\n${promptBlock}\n${endMarker}`;
+        const current = (existingPrompt || '').trim();
+        const markerPattern = new RegExp(`${startMarker}[\\s\\S]*?${endMarker}`, 'm');
+
+        if (!current) {
+            return wrappedBlock;
+        }
+        if (markerPattern.test(current)) {
+            return current.replace(markerPattern, wrappedBlock);
+        }
+        return `${wrappedBlock}\n\n${current}`;
+    }
+
+    function syncCategoryPrompt(category) {
+        const content = newsletterContent[category] || (newsletterContent[category] = { intro: '', outro: '' });
+        const mergedPrompt = mergePromptWithCategoryLinks(content.prompt || '', category);
+        content.prompt = mergedPrompt;
+
+        const promptEl = document.getElementById('editor-prompt');
+        if (promptEl && currentEditorTab === category) {
+            promptEl.value = mergedPrompt;
+        }
+        saveState();
+    }
+
+    function getSelectedCategoryResults() {
+        if (!newsletterContent.selectedResults) {
+            newsletterContent.selectedResults = { MED: '', THC: '', CBD: '', INV: '' };
+        }
+        return newsletterContent.selectedResults;
+    }
 
     window.switchEditorTab = (category) => {
         currentEditorTab = category;
@@ -651,11 +871,25 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!container) return;
 
         const content = newsletterContent[currentEditorTab];
-        let promptValue = content.prompt || '';
+        const promptValue = mergePromptWithCategoryLinks(content.prompt || '', currentEditorTab);
+        if (content.prompt !== promptValue) {
+            content.prompt = promptValue;
+            saveState();
+        }
 
         const summaryRulesValue = newsletterContent.summaryRules || '';
         const resultValue = content.result || '';
         const templateValue = (newsletterContent.templates && newsletterContent.templates[currentEditorTab]) || '';
+        const selectedResults = getSelectedCategoryResults();
+        const selectedSummaryHtml = ['MED', 'THC', 'CBD', 'INV'].map(cat => {
+            const selectedText = selectedResults[cat] || '';
+            return `
+                <div style="padding: 12px; border: 1px solid #e0e0e0; border-radius: 8px; background: #fafafa;">
+                    <div style="font-weight: 700; margin-bottom: 8px;">${cat}</div>
+                    <textarea rows="5" class="form-control" style="font-size: 0.85rem; background: #fff;" oninput="updateSelectedCategoryResult('${cat}', this.value)" placeholder="No selected ${cat} content yet...">${selectedText}</textarea>
+                </div>
+            `;
+        }).join('');
 
         container.innerHTML = `
             <div class="form-group" style="padding: 12px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef; margin-bottom: 20px;">
@@ -680,8 +914,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
 
                     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
-                        <input type="text" id="bring-articles-input" placeholder="e.g. 1,2,3" style="width: 120px; padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem;">
-                        <button class="btn btn-secondary btn-sm" onclick="bringArticlesToPrompt('${currentEditorTab}')">Bring Articles</button>
+                        <button class="btn btn-secondary btn-sm" onclick="syncCategoryPrompt('${currentEditorTab}')">Refresh Category Links</button>
+                        <span style="font-size: 0.8rem; color: #777;">The prompt auto-loads all article links for ${currentEditorTab}.</span>
                     </div>
 
                     <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px; justify-content: space-between; flex-wrap: wrap;">
@@ -717,7 +951,15 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
 
             <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
+                <button class="btn btn-primary btn-sm" onclick="selectGeneratedContent('${currentEditorTab}')">Select ${currentEditorTab}</button>
                 <button class="btn btn-outline btn-sm" onclick="copyEditorContent('${currentEditorTab}')">Copy ${currentEditorTab} Content</button>
+            </div>
+
+            <div style="margin-top: 24px; padding-top: 18px; border-top: 1px solid #e5e7eb;">
+                <label style="font-weight: 700; display: block; margin-bottom: 12px;">Selected Content</label>
+                <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px;">
+                    ${selectedSummaryHtml}
+                </div>
             </div>
         `;
         const templateEl = document.getElementById('editor-template');
@@ -726,30 +968,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (listEl && typeof getArticlesForCategory === 'function') {
             const catArticles = getArticlesForCategory(currentEditorTab);
             const listHtml = catArticles.length
-                ? catArticles.map((a, i) => (i + 1) + '. ' + (a.title || 'Untitled').replace(/</g, '&lt;').substring(0, 48) + ((a.title || '').length > 48 ? '…' : '')).join('<br>')
+                ? catArticles.map((a, i) => {
+                    const title = escapeHtml(a.title || 'Untitled');
+                    const url = escapeHtml(a.url || '');
+                    const date = escapeHtml(a.date || '');
+                    return `<div style="padding: 8px 0; border-bottom: 1px solid #eee;">
+                        <div style="font-weight: 600;">${i + 1}. ${title}</div>
+                        ${date ? `<div style="font-size: 0.75rem; color: #777;">${date}</div>` : ''}
+                        ${url ? `<a href="${url}" target="_blank" style="font-size: 0.78rem; word-break: break-all;">${url}</a>` : '<span class="text-muted">No URL</span>'}
+                    </div>`;
+                }).join('')
                 : '<span class="text-muted">No articles with ' + currentEditorTab + ' rank.</span>';
-            listEl.innerHTML = '<label style="font-weight: 600;">Articles for ' + currentEditorTab + '</label><div style="max-height: 200px; overflow-y: auto; margin-top: 6px; line-height: 1.4;">' + listHtml + '</div><div style="font-size: 0.7rem; color: #999; margin-top: 4px;">Use numbers above in &quot;Bring Articles&quot; (e.g. 1,2,3).</div>';
-        }
-    };
-
-    window.bringArticlesToPrompt = (category) => {
-        const input = document.getElementById('bring-articles-input');
-        if (!input || !input.value.trim()) return alert('Enter article numbers separated by commas (e.g. 1,2,3).');
-        const nums = input.value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && n > 0);
-        if (nums.length === 0) return alert('Enter valid article numbers separated by commas (e.g. 1,2,3).');
-
-        const categoryArticles = getArticlesForCategory(category);
-
-        const selected = nums.map(n => categoryArticles[n - 1]).filter(Boolean);
-        if (selected.length === 0) return alert('No matching articles for those numbers. Use the numbered list for ' + category + ' (right side).');
-
-        const urls = selected.map(a => a.url).join('\n');
-
-        const promptEl = document.getElementById('editor-prompt');
-        if (promptEl) {
-            const existing = promptEl.value.trim();
-            promptEl.value = existing ? existing + '\n\n' + urls : urls;
-            updateNewsletterContent(category, 'prompt', promptEl.value);
+            listEl.innerHTML = '<label style="font-weight: 600;">Articles for ' + currentEditorTab + '</label><div style="max-height: 280px; overflow-y: auto; margin-top: 6px; line-height: 1.4;">' + listHtml + '</div><div style="font-size: 0.7rem; color: #999; margin-top: 4px;">This list is pulled from the ranked articles in Article View for ' + currentEditorTab + '.</div>';
         }
     };
 
@@ -821,9 +1051,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const rulesOnEl = document.getElementById(`rules-on-${category}`);
         const isUseRules = rulesOnEl ? rulesOnEl.checked : true;
         const summaryRules = isUseRules ? (newsletterContent.summaryRules || '') : '';
+        const categoryArticles = getArticlesForCategory(category);
         const btnText = document.getElementById(`gen-btn-text-${category}`);
 
         if (!prompt) return alert('Please enter a prompt.');
+        if (categoryArticles.length === 0) return alert(`No ranked articles found for ${category}.`);
 
         btnText.textContent = 'Generating...';
 
@@ -831,7 +1063,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/api/articles/summarize', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt, useRules: isUseRules, summaryRules, category })
+                body: JSON.stringify({
+                    prompt,
+                    useRules: isUseRules,
+                    summaryRules,
+                    category,
+                    articles: categoryArticles,
+                    model: document.getElementById('ai-model') ? document.getElementById('ai-model').value : ''
+                })
             });
             const data = await res.json();
 
@@ -864,6 +1103,26 @@ document.addEventListener('DOMContentLoaded', () => {
         saveState();
     };
 
+    window.selectGeneratedContent = (category) => {
+        const resultEl = document.getElementById('editor-result');
+        const generatedText = resultEl ? resultEl.value.trim() : ((newsletterContent[category] && newsletterContent[category].result) || '').trim();
+
+        if (!generatedText) {
+            return alert(`No generated ${category} content to select yet.`);
+        }
+
+        const selectedResults = getSelectedCategoryResults();
+        selectedResults[category] = generatedText;
+        saveState();
+        renderEditorContent();
+    };
+
+    window.updateSelectedCategoryResult = (category, value) => {
+        const selectedResults = getSelectedCategoryResults();
+        selectedResults[category] = value;
+        saveState();
+    };
+
     window.copyEditorContent = (category) => {
         const content = newsletterContent[category];
         const text = content.result || content.prompt || '';
@@ -887,21 +1146,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const summary = document.getElementById('confirmation-summary');
         if (!summary) return;
 
-        // Calculate stats
-        const stats = { MED: 0, THC: 0, CBD: 0, INV: 0, COOL_FINDS: 0 };
-        articles.forEach(a => {
-            if (a.status === 'COOL FINDS') {
-                stats.COOL_FINDS++;
-            } else if (['Y', 'YM'].includes(a.status) && a.categories) {
-                a.categories.forEach(c => {
-                    if (stats[c] !== undefined) stats[c]++;
-                });
-            }
-        });
+        const newsletterNameInput = document.getElementById('newsletter-name');
+        const activeNewsletterName = currentSessionName || (newsletterNameInput ? newsletterNameInput.value.trim() : '') || 'Newsletter';
+
+        // Calculate stats from the same category-selection logic used in the app
+        const stats = {
+            MED: getArticlesForCategory('MED').length,
+            THC: getArticlesForCategory('THC').length,
+            CBD: getArticlesForCategory('CBD').length,
+            INV: getArticlesForCategory('INV').length,
+            COOL_FINDS: articles.filter(a => a.status === 'COOL FINDS').length
+        };
 
         summary.innerHTML = `
             <h3>Newsletter Summary</h3>
-            <p><strong>Newsletter Name:</strong> ${document.getElementById('newsletter-name').value}</p>
+            <p><strong>Newsletter Name:</strong> ${activeNewsletterName}</p>
             <p><strong>Inspirational Images:</strong> ${inspirationalImages.length} selected</p>
             <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 15px;">
                 <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; text-align: center;">
@@ -930,6 +1189,380 @@ document.addEventListener('DOMContentLoaded', () => {
         const exportGenBtn = document.getElementById('btn-export-generated');
         if (uploadBtn) uploadBtn.disabled = !lastGeneratedNewsletter;
         if (exportGenBtn) exportGenBtn.disabled = !lastGeneratedNewsletter;
+        renderConfirmationPreviews();
+    }
+
+    function getActiveNewsletterName() {
+        const newsletterNameInput = document.getElementById('newsletter-name');
+        return currentSessionName || (newsletterNameInput ? newsletterNameInput.value.trim() : '') || 'Newsletter';
+    }
+
+    function getSelectedOrGeneratedSummary(category) {
+        const selectedResults = getSelectedCategoryResults();
+        return (selectedResults[category] || (newsletterContent[category] && newsletterContent[category].result) || '').trim();
+    }
+
+    const TEMPLATE_FIXED_CONTENT = {
+        logoHref: 'http://www.purablis.com',
+        logoSrc: 'https://purablis.com/Newsletter%20images/Purablis-newsletter-logo.png',
+        youtubeHref: 'https://www.youtube.com/Purablis',
+        youtubeIconSrc: 'https://cdn-images.mailchimp.com/icons/social-block-v2/outline-color-youtube-96.png',
+        unsubscribeHref: 'https://ap.lovethelist.com/index.php/lists/qk5307z6w1e34/unsubscribe/unsubscribe-direct',
+        contactEmail: 'news@lovethelist.com',
+        footerAddress: 'Purablis Media · 177 Arana Dr. Martinez · CA, 94553 · USA',
+        footerLegal: 'Copyright and image use not authorized. Please contact news@purabici.com for disputes or removal.'
+    };
+
+    function getMainArticlesForCategory(category) {
+        return getArticlesForCategory(category).filter(a => ['Y', 'YM'].includes(a.status));
+    }
+
+    function getInterestingFindsArticles() {
+        return articles
+            .filter(a => a.status === 'COOL FINDS')
+            .sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+    }
+
+    function getArticleImageUrl(article) {
+        return article.publishedImageUrl || article.image || article.originalImageUrl || article.uploadedImageUrl || '';
+    }
+
+    function getSourceLabel(url) {
+        if (!url) return 'More at purablis.com...';
+        try {
+            const hostname = new URL(url).hostname.replace(/^www\./i, '');
+            return `More at ${hostname}...`;
+        } catch (e) {
+            return 'More at source...';
+        }
+    }
+
+    function chooseConfirmationInspirationalImage() {
+        const available = inspirationalImages.filter(Boolean);
+        if (!available.length) {
+            confirmationInspirationalImage = '';
+            return '';
+        }
+        if (confirmationInspirationalImage && available.includes(confirmationInspirationalImage)) {
+            return confirmationInspirationalImage;
+        }
+        confirmationInspirationalImage = available[Math.floor(Math.random() * available.length)];
+        return confirmationInspirationalImage;
+    }
+
+    async function loadConfirmationTemplate(category) {
+        if (confirmationTemplateCache[category]) {
+            return confirmationTemplateCache[category];
+        }
+        try {
+            const res = await fetch(`/api/newsletters/template/${category}`);
+            const html = await res.text();
+            if (res.ok && html && html.trim().startsWith('<')) {
+                confirmationTemplateCache[category] = html;
+                return html;
+            }
+        } catch (error) {
+            console.warn(`Could not load example template for ${category}:`, error);
+        }
+
+        if (newsletterContent.templates && newsletterContent.templates[category]) {
+            confirmationTemplateCache[category] = newsletterContent.templates[category];
+            return confirmationTemplateCache[category];
+        }
+
+        throw new Error(`Could not load ${category} template.`);
+    }
+
+    function buildFallbackConfirmationHtml(category) {
+        const newsletterName = escapeHtml(getActiveNewsletterName());
+        const summary = escapeHtml(getSelectedOrGeneratedSummary(category)).replace(/\n/g, '<br>');
+        const weeklyHtml = getMainArticlesForCategory(category).map(article => {
+            const title = escapeHtml(article.title || 'Untitled');
+            const url = article.url || '#';
+            const source = escapeHtml(getSourceLabel(article.url || ''));
+            const image = getArticleImageUrl(article);
+            return `
+                <div style="display:flex; gap:12px; padding:12px 0; border-bottom:1px solid #eee;">
+                    ${image ? `<img src="${image}" alt="" style="width:60px;height:60px;object-fit:cover;border-radius:6px;">` : ''}
+                    <div>
+                        <a href="${url}" target="_blank" style="color:#111; font-weight:700; text-decoration:none;">${title}</a>
+                        <div><a href="${url}" target="_blank" style="color:#2a6edc; font-size:0.85rem;">${source}</a></div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        const findsHtml = getInterestingFindsArticles().slice(0, 4).map(article => {
+            const title = escapeHtml(article.title || 'Untitled');
+            const url = article.url || '#';
+            return `<li style="margin-bottom:8px;"><a href="${url}" target="_blank">${title}</a></li>`;
+        }).join('');
+        const inspiration = chooseConfirmationInspirationalImage();
+        return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${newsletterName} - ${category}</title></head><body style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:20px;">
+            <h1>${newsletterName} - ${category}</h1>
+            <p>${summary || 'No summary selected yet.'}</p>
+            <h2>Weekly News</h2>
+            ${weeklyHtml || '<p>No weekly news articles selected yet.</p>'}
+            <h2>Interesting Finds</h2>
+            <ul>${findsHtml || '<li>No interesting finds selected yet.</li>'}</ul>
+            <h2>Inspiration</h2>
+            ${inspiration ? `<img src="${inspiration}" alt="Inspiration" style="max-width:100%;">` : '<p>No inspirational image selected yet.</p>'}
+        </body></html>`;
+    }
+
+    function applySummaryToTemplate(doc, category) {
+        const summaryText = getSelectedOrGeneratedSummary(category);
+        const introCell = Array.from(doc.querySelectorAll('td, div, p')).find(el => (el.textContent || '').includes('Hi [FNAME],'));
+        if (!introCell || !summaryText) return;
+
+        const lines = summaryText
+            .split(/\r?\n/)
+            .map(line => line.trim())
+            .filter(Boolean)
+            .map(line => escapeHtml(line));
+
+        introCell.innerHTML = `<span style="font-size:14px;line-height: 150%;color: #000000;">Hi [FNAME],<br><br>${lines.join('<br>')}<br><br>Have a fantastic week and stay safe,<br>Jessica<br><br>If this newsletter&#8217;s not for you, just <a href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}" style="color:#2baadf;text-decoration:underline;">unsubscribe</a> and you won&#8217;t hear from us again. :) </span><br />&nbsp;`;
+    }
+
+    function getGeneratedConfirmationHeading(category) {
+        if (newsletterContent.generatedHeadings && newsletterContent.generatedHeadings[category]) {
+            return newsletterContent.generatedHeadings[category];
+        }
+        return '';
+    }
+
+    function enforceFixedTemplateChrome(doc, category) {
+        const logoLink = doc.querySelector('td.puralog_width a');
+        if (logoLink) {
+            logoLink.href = TEMPLATE_FIXED_CONTENT.logoHref;
+            logoLink.target = '_blank';
+        }
+        const logoImg = doc.querySelector('img.puralogsize');
+        if (logoImg) {
+            logoImg.src = TEMPLATE_FIXED_CONTENT.logoSrc;
+            logoImg.alt = 'Purablis Media';
+        }
+
+        const generatedHeading = getGeneratedConfirmationHeading(category);
+        const headerTextCell = doc.querySelector('td.text strong');
+        if (headerTextCell && generatedHeading) {
+            headerTextCell.textContent = generatedHeading;
+        }
+
+        const youtubeLink = doc.querySelector('td.mcnFollowIconContent a');
+        if (youtubeLink) {
+            youtubeLink.href = TEMPLATE_FIXED_CONTENT.youtubeHref;
+            youtubeLink.target = '_blank';
+        }
+        const youtubeImg = doc.querySelector('img.mcnFollowBlockIcon');
+        if (youtubeImg) {
+            youtubeImg.src = TEMPLATE_FIXED_CONTENT.youtubeIconSrc;
+            youtubeImg.alt = 'YouTube';
+        }
+
+        const footerBlocks = Array.from(doc.querySelectorAll('table.footer td'));
+        if (footerBlocks[0]) {
+            footerBlocks[0].innerHTML = `
+                <div><em>Copyright &copy; 2026 Purablis, All rights reserved.</em></div>
+                <div>Email Contact:</div>
+                <div><a href="mailto:${TEMPLATE_FIXED_CONTENT.contactEmail}" style="mso-line-height-rule: exactly;-ms-text-size-adjust: 100%;-webkit-text-size-adjust: 100%;color: #0000f1;font-weight: normal;text-decoration: underline;" target="_blank">${TEMPLATE_FIXED_CONTENT.contactEmail}</a><br />
+                <a href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}" style="color:#2baadf;text-decoration:underline;">Unsubscribe</a></div>
+                <div>${escapeHtml(TEMPLATE_FIXED_CONTENT.footerAddress).replace(/·/g, '&middot;')}</div>
+            `;
+        }
+        if (footerBlocks[1]) {
+            footerBlocks[1].innerHTML = `<span style="font-size:11px;line-height: 150%;color: #989898;">${escapeHtml(TEMPLATE_FIXED_CONTENT.footerLegal)}</span>`;
+        }
+    }
+
+    function buildArticleTableHtml(sampleHtml, article) {
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = sampleHtml;
+        const table = wrapper.firstElementChild;
+        if (!table) return sampleHtml;
+
+        const url = article.url || '#';
+        const title = article.title || 'Untitled';
+        const image = getArticleImageUrl(article);
+        const sourceLabel = getSourceLabel(article.url || '');
+
+        Array.from(table.querySelectorAll('a')).forEach(link => {
+            link.href = url;
+            link.setAttribute('target', '_blank');
+        });
+
+        const imageEl = table.querySelector('img.mcnImage, img');
+        if (imageEl && image) {
+            imageEl.src = image;
+            imageEl.alt = title;
+        }
+
+        const descEl = table.querySelector('.a-desc');
+        if (descEl) {
+            descEl.textContent = title;
+        } else {
+            const strongEl = table.querySelector('strong');
+            if (strongEl) strongEl.textContent = title;
+        }
+
+        const sourceEl = table.querySelector('.cblue');
+        if (sourceEl) {
+            sourceEl.textContent = sourceLabel;
+        }
+
+        return table.outerHTML;
+    }
+
+    function findHeaderTableBounds(html, marker) {
+        const markerIndex = html.indexOf(marker);
+        if (markerIndex === -1) return null;
+        const tableStart = html.lastIndexOf('<table', markerIndex);
+        const tableEnd = html.indexOf('</table>', markerIndex);
+        if (tableStart === -1 || tableEnd === -1) return null;
+        return { start: tableStart, end: tableEnd + 8 };
+    }
+
+    function buildSummaryHtml(category) {
+        const summaryText = getSelectedOrGeneratedSummary(category);
+        if (!summaryText) return null;
+        const lines = summaryText
+            .split(/\r?\n/)
+            .map(line => line.trim())
+            .filter(Boolean)
+            .map(line => escapeHtml(line));
+        return `<div style="text-align: justify;"><span style="font-size:14px;line-height: 150%;color: #000000;">Hi [FNAME],<br />
+									<br />
+									${lines.join('<br />\n\t\t\t\t\t\t\t\t\t')}<br />
+									<br />
+									Have a fantastic week and stay safe,<br />
+									Jessica<br />
+									<br />
+									If this newsletter&#8217;s not for you, just <a href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}" style="color:#2baadf;text-decoration:underline;">unsubscribe</a> and you won&#8217;t hear from us again. :) </span><br />
+									&nbsp;</div>`;
+    }
+
+    function replaceArticleSection(html, startMarker, endMarker, articles) {
+        const startBounds = findHeaderTableBounds(html, startMarker);
+        const endBounds = findHeaderTableBounds(html, endMarker);
+        if (!startBounds || !endBounds || endBounds.start <= startBounds.end) return html;
+
+        const currentSection = html.slice(startBounds.end, endBounds.start);
+        const sampleMatch = currentSection.match(/<table[^>]*class="mcnCaptionRightImageContentContainer"[\s\S]*?<\/table>/i);
+        if (!sampleMatch) return html;
+
+        const renderedTables = articles.map(article => buildArticleTableHtml(sampleMatch[0], article)).join('\n');
+        return html.slice(0, startBounds.end) + '\n\n' + renderedTables + '\n\n' + html.slice(endBounds.start);
+    }
+
+    function renderTemplateHtml(category, templateHtml) {
+        let html = templateHtml;
+        const mainArticles = getMainArticlesForCategory(category);
+        const findsArticles = getInterestingFindsArticles();
+        const summaryHtml = buildSummaryHtml(category);
+
+        if (summaryHtml) {
+            html = html.replace(/<div style="text-align: justify;"><span style="font-size:14px;line-height: 150%;color: #000000;">[\s\S]*?<\/span><br \/>\s*&nbsp;<\/div>/i, summaryHtml);
+        }
+
+        html = replaceArticleSection(html, 'Weekly News', 'Interesting Finds', mainArticles);
+        html = replaceArticleSection(html, 'Interesting Finds', 'Inspiration', findsArticles);
+
+        const inspirationImage = chooseConfirmationInspirationalImage();
+        if (inspirationImage) {
+            html = html.replace(/(<a[^>]*target="_blank"[^>]*title="">\s*<img alt="Inspiration" class="mcnImage2" src=")([^"]*)(")/i, `$1${inspirationImage}$3`);
+        }
+
+        html = html.replace(/<a href="http:\/\/www\.purablis\.com" target="_blank"><img alt="" class="puralogsize" src="[^"]*" \/><\/a>/i, `<a href="${TEMPLATE_FIXED_CONTENT.logoHref}" target="_blank"><img alt="" class="puralogsize" src="${TEMPLATE_FIXED_CONTENT.logoSrc}" /></a>`);
+        html = html.replace(/<a href="https:\/\/www\.youtube\.com\/Purablis"[\s\S]*?<img alt="YouTube" class="mcnFollowBlockIcon" src="[^"]*"[\s\S]*?<\/a>/i, `<a href="${TEMPLATE_FIXED_CONTENT.youtubeHref}" style="mso-line-height-rule: exactly;-ms-text-size-adjust: 100%;-webkit-text-size-adjust: 100%;" target="_blank"><img alt="YouTube" class="mcnFollowBlockIcon" src="${TEMPLATE_FIXED_CONTENT.youtubeIconSrc}" style="width: 30px;max-width: 30px;display: block;border: 0;height: auto;outline: none;text-decoration: none;-ms-interpolation-mode: bicubic;" width="30" /></a>`);
+        html = html.replace(/<a href="https:\/\/ap\.lovethelist\.com\/index\.php\/lists\/qk5307z6w1e34\/unsubscribe\/unsubscribe-direct" style="color:#2baadf;text-decoration:underline;">unsubscribe<\/a>/i, `<a href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}" style="color:#2baadf;text-decoration:underline;">unsubscribe</a>`);
+        html = html.replace(/<a href="https:\/\/ap\.lovethelist\.com\/index\.php\/lists\/qk5307z6w1e34\/unsubscribe\/unsubscribe-direct" style="color:#2baadf;text-decoration:underline;">Unsubscribe<\/a>/i, `<a href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}" style="color:#2baadf;text-decoration:underline;">Unsubscribe</a>`);
+
+        const generatedHeading = getGeneratedConfirmationHeading(category);
+        if (generatedHeading) {
+            html = html.replace(/(<td class="text"[^>]*><strong>)([\s\S]*?)(<\/strong><\/td>)/i, `$1${escapeHtml(generatedHeading)}$3`);
+        }
+
+        return html;
+    }
+
+    async function buildConfirmationHtml(category) {
+        try {
+            const templateHtml = await loadConfirmationTemplate(category);
+            const rendered = renderTemplateHtml(category, templateHtml);
+            confirmationRenderedHtml[category] = rendered;
+            return rendered;
+        } catch (error) {
+            console.error(`Failed to build ${category} confirmation HTML:`, error);
+            const errorHtml = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;padding:24px;color:#111;"><h2>Template Error</h2><p>Confirmation preview could not load the required example template for ${category}.</p><p>Restart the local server so the new <code>/api/newsletters/template/${category}</code> route is available, then reload the page.</p></body></html>`;
+            confirmationRenderedHtml[category] = errorHtml;
+            return errorHtml;
+        }
+    }
+
+    window.switchConfirmationTab = (category) => {
+        currentConfirmationTab = category;
+        renderConfirmationPreviews();
+    };
+
+    window.downloadConfirmationHtml = async (category) => {
+        const html = confirmationRenderedHtml[category] || await buildConfirmationHtml(category);
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${getActiveNewsletterName().replace(/[^\w\-]+/g, '-') || 'newsletter'}-${category}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    window.downloadConfirmationDoc = async (category) => {
+        const html = confirmationRenderedHtml[category] || await buildConfirmationHtml(category);
+        const blob = new Blob([html], { type: 'application/msword' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${getActiveNewsletterName().replace(/[^\w\-]+/g, '-') || 'newsletter'}-${category}.doc`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    async function renderConfirmationPreviews() {
+        const container = document.getElementById('confirmation-previews');
+        if (!container) return;
+
+        const selectedSummary = getSelectedOrGeneratedSummary(currentConfirmationTab);
+        container.innerHTML = `
+            <div class="tabs-container" style="margin-bottom: 18px; border-bottom: 1px solid #ddd;">
+                <button class="tab-btn ${currentConfirmationTab === 'MED' ? 'active' : ''}" onclick="switchConfirmationTab('MED')">MED</button>
+                <button class="tab-btn ${currentConfirmationTab === 'THC' ? 'active' : ''}" onclick="switchConfirmationTab('THC')">THC</button>
+                <button class="tab-btn ${currentConfirmationTab === 'CBD' ? 'active' : ''}" onclick="switchConfirmationTab('CBD')">CBD</button>
+                <button class="tab-btn ${currentConfirmationTab === 'INV' ? 'active' : ''}" onclick="switchConfirmationTab('INV')">INV</button>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; margin-bottom:14px;">
+                <div>
+                    <div style="font-size: 1rem; font-weight: 700; margin-bottom: 4px;">${currentConfirmationTab} Preview</div>
+                    <div style="font-size: 0.85rem; color:#666;">Uses the example email template itself, then fills in the current summary, ranked articles, interesting finds, and one inspirational image.</div>
+                </div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <button class="btn btn-success btn-sm" onclick="downloadConfirmationHtml('${currentConfirmationTab}')">Download HTML</button>
+                    <button class="btn btn-outline btn-sm" onclick="downloadConfirmationDoc('${currentConfirmationTab}')">Download DOC</button>
+                </div>
+            </div>
+            <div id="confirmation-preview-frame-wrap" style="border:1px solid #ddd; border-radius: 10px; overflow:auto; background:#fff;">
+                <div style="padding: 24px; text-align:center; color:#666;">Loading ${currentConfirmationTab} template preview...</div>
+            </div>
+        `;
+
+        const html = await buildConfirmationHtml(currentConfirmationTab);
+        const frameWrap = document.getElementById('confirmation-preview-frame-wrap');
+        if (!frameWrap) return;
+
+        frameWrap.innerHTML = `<iframe title="${currentConfirmationTab} newsletter preview" style="width:900px; min-width:900px; min-height:1100px; border:0; background:#fff; display:block; margin:0 auto;"></iframe>`;
+        const iframe = frameWrap.querySelector('iframe');
+        if (iframe) iframe.srcdoc = html;
     }
 
     window.exportSpreadsheet = () => {
@@ -1972,8 +2605,10 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     function populateSavedDropdown() {
+        const dropdownStep1 = document.getElementById('saved-sessions-dropdown-step1');
         const dropdown = document.getElementById('saved-sessions-dropdown');
         const dropdownStep3 = document.getElementById('saved-sessions-dropdown-step3');
+        const nameInput = document.getElementById('newsletter-name');
 
         const sessions = getSavedSessions();
         const names = Object.keys(sessions).sort();
@@ -1985,11 +2620,21 @@ document.addEventListener('DOMContentLoaded', () => {
             return `<option value="${name}">${name} (${count} articles, ${date})</option>`;
         }).join('');
 
+        if (dropdownStep1) {
+            dropdownStep1.innerHTML = '<option value="">Saved newsletters</option>' + optionsHtml;
+        }
         if (dropdown) {
             dropdown.innerHTML = '<option value="">-- Select --</option>' + optionsHtml;
         }
         if (dropdownStep3) {
             dropdownStep3.innerHTML = '<option value="">-- Select --</option>' + optionsHtml;
+        }
+
+        const selectedName = currentSessionName || (nameInput ? nameInput.value.trim() : '');
+        if (selectedName) {
+            if (dropdownStep1) dropdownStep1.value = selectedName;
+            if (dropdown) dropdown.value = selectedName;
+            if (dropdownStep3) dropdownStep3.value = selectedName;
         }
 
         const hintEl = document.getElementById('state-load-hint');
@@ -2502,5 +3147,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (btnBackStep5) {
         btnBackStep5.addEventListener('click', () => switchStep(5));
+    }
+
+    // Saved Newsletter Selector (Step 1)
+    const savedSessionsDropdownStep1 = document.getElementById('saved-sessions-dropdown-step1');
+    if (savedSessionsDropdownStep1) {
+        savedSessionsDropdownStep1.addEventListener('change', (e) => {
+            const selectedName = e.target.value;
+            if (selectedName) {
+                document.getElementById('newsletter-name').value = selectedName;
+                currentSessionName = selectedName;
+            }
+        });
+    }
+
+    const newsletterNameInput = document.getElementById('newsletter-name');
+    if (newsletterNameInput) {
+        newsletterNameInput.addEventListener('input', () => {
+            currentSessionName = newsletterNameInput.value.trim();
+            if (savedSessionsDropdownStep1) {
+                savedSessionsDropdownStep1.value = currentSessionName;
+            }
+        });
     }
 });

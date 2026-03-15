@@ -24,6 +24,9 @@ const diskStorage = multer.diskStorage({
     }
 });
 const uploadMiddleware = multer({ storage: diskStorage, limits: { fileSize: 10 * 1024 * 1024 } });
+const STATE_TABLE = process.env.SUPABASE_STATE_TABLE || 'newsletter_state';
+const INSPIRATIONAL_LIBRARY_KEY = 'inspirational_library';
+let supabase = null;
 
 // FTP remote path from env (no leading slash). Public URL base with no trailing slash.
 function getRemotePath() {
@@ -31,6 +34,219 @@ function getRemotePath() {
     const publicBase = (process.env.GODADDY_PUBLIC_BASE_URL || '').replace(/\/+$/, '');
     return { remoteDir: ftpPath, publicUrlBase: publicBase };
 }
+
+function getFtpConfig() {
+    return {
+        host: process.env.GODADDY_FTP_HOST,
+        user: process.env.GODADDY_FTP_USER,
+        password: process.env.GODADDY_FTP_PASS,
+        port: parseInt(process.env.GODADDY_FTP_PORT || '21')
+    };
+}
+
+function getSupabase() {
+    if (supabase) return supabase;
+    try {
+        const { createClient } = require('@supabase/supabase-js');
+        const url = process.env.SUPABASE_URL;
+        const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
+        if (url && key) {
+            supabase = createClient(url, key);
+            return supabase;
+        }
+    } catch (e) {
+        console.warn('Supabase not configured for images:', e.message);
+    }
+    return null;
+}
+
+function isImageFile(name) {
+    return /\.(png|jpe?g|gif|webp|svg)$/i.test(name || '');
+}
+
+function extractFilenameFromUrl(url) {
+    try {
+        const pathname = new URL(url).pathname;
+        return path.basename(decodeURIComponent(pathname));
+    } catch (e) {
+        return path.basename(String(url || ''));
+    }
+}
+
+async function listInspirationalLibrary() {
+    const ftp = getFtpConfig();
+    const { remoteDir, publicUrlBase } = getRemotePath();
+
+    if (ftp.host && ftp.user && ftp.password && publicUrlBase) {
+        const { Client } = require('basic-ftp');
+        const client = new Client();
+        client.ftp.verbose = false;
+        try {
+            await client.access({
+                host: ftp.host,
+                port: ftp.port,
+                user: ftp.user,
+                password: ftp.password,
+                secure: true,
+                secureOptions: { rejectUnauthorized: false }
+            });
+
+            const entries = await client.list(remoteDir);
+            return entries
+                .filter(entry => entry.isFile && isImageFile(entry.name))
+                .map(entry => ({
+                    name: entry.name,
+                    url: `${publicUrlBase}/${entry.name}`,
+                    source: 'ftp'
+                }))
+                .sort((a, b) => a.name.localeCompare(b.name));
+        } finally {
+            client.close();
+        }
+    }
+
+    if (!fs.existsSync(uploadDir)) {
+        return [];
+    }
+
+    return fs.readdirSync(uploadDir)
+        .filter(name => isImageFile(name))
+        .map(name => ({
+            name,
+            url: `/uploads/${name}`,
+            source: 'local'
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function normalizeLibraryImages(images) {
+    const seen = new Set();
+    return (Array.isArray(images) ? images : [])
+        .filter(item => item && item.url)
+        .map(item => ({
+            name: item.name || extractFilenameFromUrl(item.url),
+            url: String(item.url).trim(),
+            source: item.source || 'db'
+        }))
+        .filter(item => {
+            if (!item.url || seen.has(item.url)) return false;
+            seen.add(item.url);
+            return true;
+        })
+        .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function getInspirationalLibraryFromDb() {
+    const client = getSupabase();
+    if (!client) return null;
+
+    const { data, error } = await client
+        .from(STATE_TABLE)
+        .select('value')
+        .eq('key', INSPIRATIONAL_LIBRARY_KEY)
+        .maybeSingle();
+
+    if (error) {
+        throw new Error(error.message);
+    }
+    return data ? normalizeLibraryImages(data.value) : null;
+}
+
+async function saveInspirationalLibraryToDb(images) {
+    const client = getSupabase();
+    if (!client) return false;
+
+    const normalized = normalizeLibraryImages(images);
+    const { error } = await client
+        .from(STATE_TABLE)
+        .upsert(
+            { key: INSPIRATIONAL_LIBRARY_KEY, value: normalized, updated_at: new Date().toISOString() },
+            { onConflict: 'key' }
+        );
+
+    if (error) {
+        throw new Error(error.message);
+    }
+    return true;
+}
+
+// GET /api/images/inspirational-library - list previously uploaded inspirational images
+router.get('/inspirational-library', async (req, res) => {
+    try {
+        let images = await getInspirationalLibraryFromDb();
+        if (images === null) {
+            images = await listInspirationalLibrary();
+            try {
+                await saveInspirationalLibraryToDb(images);
+            } catch (dbErr) {
+                console.warn('Could not seed inspirational library in DB:', dbErr.message);
+            }
+        }
+        res.json({ success: true, images });
+    } catch (error) {
+        console.error('Inspirational library list error:', error);
+        res.status(500).json({ error: 'Failed to load inspirational image library' });
+    }
+});
+
+// DELETE /api/images/inspirational-library - remove a previously uploaded inspirational image
+router.delete('/inspirational-library', async (req, res) => {
+    try {
+        const { url } = req.body || {};
+        if (!url || typeof url !== 'string') {
+            return res.status(400).json({ error: 'Missing url' });
+        }
+
+        const filename = extractFilenameFromUrl(url.trim());
+        if (!filename) {
+            return res.status(400).json({ error: 'Could not determine filename' });
+        }
+
+        const ftp = getFtpConfig();
+        const { remoteDir, publicUrlBase } = getRemotePath();
+
+        if (ftp.host && ftp.user && ftp.password && publicUrlBase && url.startsWith(`${publicUrlBase}/`)) {
+            const expectedPrefix = `${publicUrlBase}/`;
+
+            const { Client } = require('basic-ftp');
+            const client = new Client();
+            client.ftp.verbose = false;
+            try {
+                await client.access({
+                    host: ftp.host,
+                    port: ftp.port,
+                    user: ftp.user,
+                    password: ftp.password,
+                    secure: true,
+                    secureOptions: { rejectUnauthorized: false }
+                });
+                await client.remove(`${remoteDir}/${filename}`);
+            } finally {
+                client.close();
+            }
+        }
+
+        const localPath = path.join(uploadDir, filename);
+        if (fs.existsSync(localPath)) {
+            fs.unlinkSync(localPath);
+        }
+
+        try {
+            const existing = await getInspirationalLibraryFromDb();
+            if (existing !== null) {
+                const next = existing.filter(item => item.url !== url);
+                await saveInspirationalLibraryToDb(next);
+            }
+        } catch (dbErr) {
+            console.warn('Failed to update inspirational library DB after delete:', dbErr.message);
+        }
+
+        res.json({ success: true, filename });
+    } catch (error) {
+        console.error('Inspirational library delete error:', error);
+        res.status(500).json({ error: error.message || 'Failed to delete inspirational image' });
+    }
+});
 
 router.post('/search', async (req, res) => {
     try {
@@ -284,10 +500,24 @@ router.post('/upload-inspirational', uploadMiddleware.single('image'), async (re
             console.log(`FTP upload OK: ${remoteDir}/${filename}`);
 
             const publicUrl = publicUrlBase ? `${publicUrlBase}/${filename}` : localUrl;
+            try {
+                const existing = await getInspirationalLibraryFromDb();
+                const next = normalizeLibraryImages([...(existing || []), { name: filename, url: publicUrl, source: 'ftp' }]);
+                await saveInspirationalLibraryToDb(next);
+            } catch (dbErr) {
+                console.warn('Failed to save inspirational upload in DB:', dbErr.message);
+            }
 
             res.json({ success: true, url: publicUrl, published: true });
         } catch (ftpErr) {
             console.error('FTP upload failed:', ftpErr.message);
+            try {
+                const existing = await getInspirationalLibraryFromDb();
+                const next = normalizeLibraryImages([...(existing || []), { name: filename, url: localUrl, source: 'local' }]);
+                await saveInspirationalLibraryToDb(next);
+            } catch (dbErr) {
+                console.warn('Failed to save local inspirational upload in DB:', dbErr.message);
+            }
             res.json({ success: true, url: localUrl, published: false, ftpError: ftpErr.message });
         } finally {
             client.close();

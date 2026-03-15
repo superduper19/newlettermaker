@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const fs = require('fs');
+const path = require('path');
 
 let supabase = null;
 function getSupabase() {
@@ -19,6 +21,12 @@ function getSupabase() {
 }
 
 const TABLE = process.env.SUPABASE_STATE_TABLE || 'newsletter_state';
+const TEMPLATE_FILES = {
+    MED: 'newsletter_feb23_2026_MED.html',
+    THC: 'newsletter_feb23_2026_THC.html',
+    CBD: 'newsletter_feb23_2026_CBD.html',
+    INV: 'newsletter_feb23_2026_INV.html'
+};
 
 // POST /api/newsletters — save generated newsletter to DB
 router.post('/', async (req, res) => {
@@ -54,6 +62,29 @@ router.post('/', async (req, res) => {
     } catch (e) {
         console.error(e);
         res.status(500).json({ error: e.message });
+    }
+});
+
+// GET /api/newsletters/template/:category — load default category template from exampleTemplates
+router.get('/template/:category', (req, res) => {
+    const category = String(req.params.category || '').toUpperCase();
+    const filename = TEMPLATE_FILES[category];
+
+    if (!filename) {
+        return res.status(400).json({ error: 'Unknown category' });
+    }
+
+    const filePath = path.join(__dirname, '../exampleTemplates', filename);
+    if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: 'Template not found', category, filename });
+    }
+
+    try {
+        const html = fs.readFileSync(filePath, 'utf8');
+        res.type('html').send(html);
+    } catch (e) {
+        console.error('Template load error:', e);
+        res.status(500).json({ error: 'Failed to read template' });
     }
 });
 

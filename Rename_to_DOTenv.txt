@@ -3,22 +3,22 @@ PORT=5020
 NODE_ENV=development
 
 # AI article search & modify — use at least one
-ANTHROPIC_API_KEY=
-GEMINI_API_KEY=
-# GOOGLE_API_KEY=   # alternative to GEMINI_API_KEY
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+GEMINI_API_KEY=your_gemini_api_key_here
+# GOOGLE_API_KEY=your_google_api_key_here
 
 # Freepik image search (optional if using upload-only)
-FREEPIK_API_KEY=
+FREEPIK_API_KEY=your_freepik_api_key_here
 
-# Supabase — from Dashboard: Settings → API → Project URL and API Keys
-SUPABASE_URL=https://xxxxxxxx.supabase.co
+# Supabase — from Dashboard: Settings -> API -> Project URL and API Keys
+SUPABASE_URL=https://your-project-ref.supabase.co
 
 # Use the secret key for this app (server/backend). Format: sb_secret_...
-# Copy from: API Keys → Secret keys → default → copy
-SUPABASE_SECRET_KEY=sb_secret_xxxxxxxxxxxxxxxxxxxxxxxx
+# Copy from: API Keys -> Secret keys -> default -> copy
+SUPABASE_SECRET_KEY=your_supabase_secret_key_here
 
 # Or use publishable key (sb_publishable_...) if table has GRANT to anon and you prefer no secret
-# SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxxxxxxxxxxxxxxxxxxxxxxx
+SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key_here
 
 # Optional: table name for app state (default: newsletter_state)
 # SUPABASE_STATE_TABLE=newsletter_state
@@ -27,8 +27,8 @@ SUPABASE_SECRET_KEY=sb_secret_xxxxxxxxxxxxxxxxxxxxxxxx
 # SUPABASE_DB_URL=postgresql://postgres.[ref]:[password]@...pooler.supabase.com:6543/postgres
 
 # GoDaddy FTP — for publishing inspirational images
-GODADDY_FTP_HOST=
+GODADDY_FTP_HOST=your_godaddy_ftp_host_here
 GODADDY_FTP_PORT=21
-GODADDY_FTP_USER=
-GODADDY_FTP_PASS=
-GODADDY_PUBLIC_BASE_URL=https://purablis.com/News-roundup
+GODADDY_FTP_USER=your_godaddy_ftp_user_here
+GODADDY_FTP_PASS=your_godaddy_ftp_password_here
+GODADDY_PUBLIC_BASE_URL=https://your-domain.example/News-roundup
