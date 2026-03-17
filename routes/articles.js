@@ -717,4 +717,81 @@ If some links could not be accessed, briefly note that in one short line.`;
     }
 });
 
+router.post('/generate-subjects', async (req, res) => {
+    try {
+        const { prompt, categories, model } = req.body || {};
+        if (!prompt || !String(prompt).trim()) {
+            return res.status(400).json({ error: 'Prompt is required' });
+        }
+        if (!categories || typeof categories !== 'object') {
+            return res.status(400).json({ error: 'Categories payload is required' });
+        }
+
+        const hasGemini = !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+        if (!hasGemini) {
+            return res.status(503).json({ error: 'GEMINI_API_KEY not configured for subject generation.' });
+        }
+
+        const normalized = {};
+        ['MED', 'THC', 'CBD', 'INV'].forEach((category) => {
+            const items = Array.isArray(categories[category]) ? categories[category] : [];
+            normalized[category] = items.slice(0, 3).map((article, index) => ({
+                index: index + 1,
+                title: article.title || '',
+                url: article.url || '',
+                date: article.date || '',
+                description: article.description || ''
+            }));
+        });
+
+        const systemPrompt = `You are an expert email copywriter for newsletter subject lines.
+
+Generate one short, highly clickable email subject for each category: MED, THC, CBD, INV.
+Use only the provided articles.
+Use suitable emojis as separators between the main hooks.
+Keep each subject on a single line.
+Make each subject concise and compelling.
+If the same article or same core story appears in multiple categories, use the same wording and emoji treatment for that repeated idea.
+Return only valid JSON with keys MED, THC, CBD, INV.`;
+
+        const userMessage = [
+            'User instructions:',
+            String(prompt).trim(),
+            '',
+            'Category articles:',
+            JSON.stringify(normalized, null, 2)
+        ].join('\n');
+
+        const requestedModel = String(model || '').toLowerCase();
+        const geminiModelId = requestedModel.includes('gemini')
+            ? getApiModelId(model || 'gemini-flash-3-0')
+            : getApiModelId('gemini-flash-3-0');
+        const geminiModel = genAI.getGenerativeModel({ model: geminiModelId });
+        const fullPrompt = `${systemPrompt}\n\n${userMessage}`;
+        const result = await geminiModel.generateContent(fullPrompt);
+        const content = result.response.text().trim();
+        const cleaned = content.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
+
+        let subjects;
+        try {
+            subjects = JSON.parse(cleaned);
+        } catch (err) {
+            return res.status(500).json({ error: 'Subject generator returned invalid JSON', details: cleaned });
+        }
+
+        res.json({
+            success: true,
+            subjects: {
+                MED: String(subjects.MED || '').trim(),
+                THC: String(subjects.THC || '').trim(),
+                CBD: String(subjects.CBD || '').trim(),
+                INV: String(subjects.INV || '').trim()
+            }
+        });
+    } catch (error) {
+        console.error('Error generating subjects:', error);
+        res.status(500).json({ error: 'Failed to generate subjects', details: error.message });
+    }
+});
+
 module.exports = router;

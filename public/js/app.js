@@ -95,6 +95,8 @@ document.addEventListener('DOMContentLoaded', () => {
         'Happy Labor Day!'
     ]));
     const DEFAULT_GREETING = 'Have a fantastic week and stay safe,';
+    const LEGACY_DEFAULT_SUBJECT_PROMPT = 'From these three articles, Create me a small very clicky subject seperated by suitable Emojis, and if articles are same, Use same subject and emoji.';
+    const DEFAULT_SUBJECT_PROMPT = 'From these three articles, Create me a small very clicky subject seperated by suitable Emojis, and if articles are same, Use same subject and emoji. And no "|" in between.';
 
     // Global State
     let articles = [];
@@ -108,7 +110,9 @@ document.addEventListener('DOMContentLoaded', () => {
         CBD: { intro: '', outro: '' },
         INV: { intro: '', outro: '' },
         templates: { MED: '', THC: '', CBD: '', INV: '' },
-        selectedGreeting: DEFAULT_GREETING
+        selectedGreeting: DEFAULT_GREETING,
+        subjectPrompt: DEFAULT_SUBJECT_PROMPT,
+        generatedSubjects: { MED: '', THC: '', CBD: '', INV: '' }
     };
     let currentEditorTab = 'MED';
     let currentConfirmationTab = 'MED';
@@ -158,6 +162,27 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem(INSPIRATIONAL_LIBRARY_CACHE_KEY, JSON.stringify(nextState.inspirationalLibraryImages || []));
     }
 
+    function normalizeSubjectPrompt(prompt) {
+        const value = String(prompt || '').trim();
+        if (!value || value === LEGACY_DEFAULT_SUBJECT_PROMPT) {
+            return DEFAULT_SUBJECT_PROMPT;
+        }
+        return value;
+    }
+
+    function hasCategorySelection(article) {
+        if (!article || !article.ranks) return false;
+        return ['MED', 'THC', 'CBD', 'INV'].some((cat) => {
+            const value = article.ranks[cat];
+            return value !== undefined && value !== null && String(value).trim() !== '';
+        });
+    }
+
+    function isSelectedArticle(article) {
+        const status = String(article?.status || '').trim().toUpperCase();
+        return ['Y', 'YM', 'COOL FINDS'].includes(status) || hasCategorySelection(article);
+    }
+
     function applyWorkspaceState(state, { mergeLibrary = false } = {}) {
         const value = state || {};
         articles = Array.isArray(value.articles) ? value.articles : [];
@@ -174,7 +199,9 @@ document.addEventListener('DOMContentLoaded', () => {
         newsletterContent = {
             ...nc,
             templates: nc.templates || { MED: '', THC: '', CBD: '', INV: '' },
-            selectedGreeting: nc.selectedGreeting || DEFAULT_GREETING
+            selectedGreeting: nc.selectedGreeting || DEFAULT_GREETING,
+            subjectPrompt: normalizeSubjectPrompt(nc.subjectPrompt),
+            generatedSubjects: nc.generatedSubjects || { MED: '', THC: '', CBD: '', INV: '' }
         };
         lastGeneratedNewsletter = value.lastGeneratedNewsletter || null;
         persistWorkspaceLocal(buildWorkspaceState());
@@ -432,30 +459,33 @@ document.addEventListener('DOMContentLoaded', () => {
         const list = document.getElementById('images-list');
         list.innerHTML = '';
 
-        const relevantArticles = articles.filter(a => (a.categories && a.categories.length > 0) || a.status === 'COOL FINDS' || a.status === 'M');
+        const relevantArticles = articles.filter(a => a.selected !== false && ((a.categories && a.categories.length > 0) || a.status === 'COOL FINDS' || a.status === 'M'));
         
         if (relevantArticles.length === 0) {
-            list.innerHTML = '<div style="padding: 30px; text-align: center; color: #777;">No articles with categories. Go back to Article View and assign categories first.</div>';
+            list.innerHTML = '<div style="padding: 30px; text-align: center; color: #777;">No selected articles are ready for Image View yet. Check the articles you want in Article View and assign categories first.</div>';
             return;
         }
 
         // Table header
         list.innerHTML = `
             <div class="img-table-header">
-                <div class="img-col-select" style="display:flex;flex-direction:column;align-items:center;gap:2px;">
-                    <span style="font-size:0.75rem;">Publish</span>
-                    <span style="font-size:0.65rem;cursor:pointer;text-decoration:underline;" onclick="toggleAllImagePublish(true)">All</span>
-                    <span style="font-size:0.65rem;cursor:pointer;text-decoration:underline;" onclick="toggleAllImagePublish(false)">None</span>
+                <div class="img-col-select img-header-select">
+                    <div class="header-label">Publish</div>
+                    <div class="header-inline-actions">
+                        <button type="button" class="header-link-btn" onclick="toggleAllImagePublish(true)">All</button>
+                        <span>/</span>
+                        <button type="button" class="header-link-btn" onclick="toggleAllImagePublish(false)">None</button>
+                    </div>
                 </div>
-                <div class="img-col-article">Article</div>
-                <div class="img-col-cat">MED</div>
-                <div class="img-col-cat">THC</div>
-                <div class="img-col-cat">CBD</div>
-                <div class="img-col-cat">INV</div>
-                <div class="img-col-search">Image Search</div>
-                <div class="img-col-selected">Selected</div>
-                <div class="img-col-results">Results</div>
-                <div class="img-col-actions">Actions</div>
+                <div class="img-col-article"><div class="header-label">Article</div></div>
+                <div class="img-col-cat"><div class="header-label">MED</div></div>
+                <div class="img-col-cat"><div class="header-label">THC</div></div>
+                <div class="img-col-cat"><div class="header-label">CBD</div></div>
+                <div class="img-col-cat"><div class="header-label">INV</div></div>
+                <div class="img-col-search"><div class="header-label">Image Search</div></div>
+                <div class="img-col-selected"><div class="header-label">Selected</div></div>
+                <div class="img-col-results"><div class="header-label">Results</div></div>
+                <div class="img-col-actions"><div class="header-label">Actions</div></div>
             </div>
         `;
 
@@ -538,12 +568,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateImageViewStats() {
         const statsEl = document.getElementById('image-view-stats');
         if (!statsEl) return;
-        const relevantArticles = articles.filter(a => (a.categories && a.categories.length > 0) || a.status === 'COOL FINDS' || a.status === 'M');
+        const relevantArticles = articles.filter(a => a.selected !== false && ((a.categories && a.categories.length > 0) || a.status === 'COOL FINDS' || a.status === 'M'));
         const counts = { MED: 0, THC: 0, CBD: 0, INV: 0 };
-        let validStatusCount = 0;
-        const validStatuses = ['Y', 'YM', 'COOL FINDS'];
+        let selectedCount = 0;
         relevantArticles.forEach(a => {
-            if (validStatuses.includes(a.status)) validStatusCount++;
+            if (a.publishImage !== false) selectedCount++;
             if (a.ranks) {
                 ['MED', 'THC', 'CBD', 'INV'].forEach(cat => {
                     if (a.ranks[cat]) counts[cat]++;
@@ -562,7 +591,7 @@ document.addEventListener('DOMContentLoaded', () => {
         statsEl.innerHTML = `
             ${sessionLabel}
             <span class="stat-item" style="${countStyle}" title="Target is 25 articles">Total: ${count} / 25</span>
-            <span class="stat-item" style="background:#e0f7fa; color:#006064;">Selected: ${validStatusCount}</span>
+            <span class="stat-item" style="background:#e0f7fa; color:#006064;" title="Articles currently selected for Image View">Selected: ${selectedCount}</span>
             <span class="stat-item" style="background:#e3f2fd; color:#0d47a1;">MED: ${counts.MED}</span>
             <span class="stat-item" style="background:#e8f5e9; color:#1b5e20;">THC: ${counts.THC}</span>
             <span class="stat-item" style="background:#fff3e0; color:#e65100;">CBD: ${counts.CBD}</span>
@@ -966,26 +995,35 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             inspirationalLibraryImages.forEach(({ url, name }) => {
                 const div = document.createElement('div');
-                div.style.position = 'relative';
+                div.className = 'insp-library-card';
 
                 const imgEl = document.createElement('img');
                 imgEl.src = url;
-                imgEl.className = 'thumbnail-img';
+                imgEl.className = 'insp-library-preview';
                 imgEl.title = name || 'Uploaded image';
                 imgEl.onclick = () => selectInspirationalImage(url);
 
+                const previewWrap = document.createElement('div');
+                previewWrap.className = 'insp-library-preview-wrap';
+                previewWrap.appendChild(imgEl);
+
+                const meta = document.createElement('div');
+                meta.className = 'insp-library-meta';
+
+                const title = document.createElement('div');
+                title.className = 'insp-library-title';
+                title.textContent = name || 'Uploaded inspirational image';
+
+                const subtitle = document.createElement('div');
+                subtitle.className = 'insp-library-subtitle';
+                subtitle.textContent = 'Stored on server and available for newsletter use.';
+
                 const actions = document.createElement('div');
-                actions.style.position = 'absolute';
-                actions.style.left = '5px';
-                actions.style.right = '5px';
-                actions.style.bottom = '5px';
-                actions.style.display = 'flex';
-                actions.style.gap = '6px';
+                actions.className = 'insp-library-actions';
 
                 const selectBtn = document.createElement('button');
                 selectBtn.textContent = 'Select';
                 selectBtn.className = 'btn btn-primary btn-sm';
-                selectBtn.style.flex = '1';
                 selectBtn.onclick = (e) => {
                     e.stopPropagation();
                     selectInspirationalImage(url);
@@ -993,11 +1031,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const deleteBtn = document.createElement('button');
                 deleteBtn.textContent = 'Delete';
-                deleteBtn.className = 'btn btn-sm';
-                deleteBtn.style.flex = '1';
-                deleteBtn.style.background = 'rgba(211, 47, 47, 0.92)';
-                deleteBtn.style.color = '#fff';
-                deleteBtn.style.border = 'none';
+                deleteBtn.className = 'btn btn-sm insp-delete-btn';
                 deleteBtn.onclick = (e) => {
                     e.stopPropagation();
                     deleteInspirationalLibraryImage(url);
@@ -1005,8 +1039,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 actions.appendChild(selectBtn);
                 actions.appendChild(deleteBtn);
-                div.appendChild(imgEl);
-                div.appendChild(actions);
+                meta.appendChild(title);
+                meta.appendChild(subtitle);
+                meta.appendChild(actions);
+                div.appendChild(previewWrap);
+                div.appendChild(meta);
                 galleryGrid.appendChild(div);
             });
         }
@@ -1017,28 +1054,24 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             inspirationalImages.forEach((url, index) => {
                 const div = document.createElement('div');
-                div.style.position = 'relative';
+                div.className = 'insp-selected-card';
 
                 const imgEl = document.createElement('img');
                 imgEl.src = url;
-                imgEl.className = 'thumbnail-img';
+                imgEl.className = 'insp-selected-preview';
                 
                 const removeBtn = document.createElement('button');
                 removeBtn.innerHTML = '&times;';
-                removeBtn.style.position = 'absolute';
-                removeBtn.style.top = '5px';
-                removeBtn.style.right = '5px';
-                removeBtn.style.background = 'rgba(255,0,0,0.8)';
-                removeBtn.style.color = '#fff';
-                removeBtn.style.border = 'none';
-                removeBtn.style.borderRadius = '50%';
-                removeBtn.style.width = '20px';
-                removeBtn.style.height = '20px';
-                removeBtn.style.cursor = 'pointer';
+                removeBtn.className = 'insp-selected-remove';
                 removeBtn.onclick = () => removeInspirationalImage(index);
+
+                const caption = document.createElement('div');
+                caption.className = 'insp-selected-caption';
+                caption.textContent = 'Selected for Confirmation and final newsletter';
 
                 div.appendChild(imgEl);
                 div.appendChild(removeBtn);
+                div.appendChild(caption);
                 selectedGrid.appendChild(div);
             });
         }
@@ -1056,9 +1089,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function buildCategoryPrompt(category) {
-        const categoryArticles = getArticlesForCategory(category);
+        const categoryArticles = getSummaryArticlesForCategory(category);
         if (categoryArticles.length === 0) {
-            return `CATEGORY: ${category}\nNo articles currently ranked for this category.`;
+            return `CATEGORY: ${category}\nNo priority-ranked articles (1-4) currently selected for this category.`;
         }
 
         const articleLines = categoryArticles.map((article, index) => {
@@ -1069,7 +1102,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         return [
             `CATEGORY: ${category}`,
-            'Use the article links below as the only source set for this category summary.',
+            'Use only the priority-ranked article links below as the source set for this category summary.',
             'Create a strong 6-7 line newsletter-ready summary for this category.',
             '',
             articleLines
@@ -1081,21 +1114,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const startMarker = `[[AUTO_CATEGORY_LINKS_${category}_START]]`;
         const endMarker = `[[AUTO_CATEGORY_LINKS_${category}_END]]`;
         const wrappedBlock = `${startMarker}\n${promptBlock}\n${endMarker}`;
-        const current = (existingPrompt || '').trim();
+        const current = String(existingPrompt || '').trim();
         const markerPattern = new RegExp(`${startMarker}[\\s\\S]*?${endMarker}`, 'm');
+        const brokenBlockPattern = new RegExp(`\\[\\[AUTO_CATEGORY_LINKS_${category}_[\\s\\S]*?(?=\\nhttps?:\\/\\/|\\n[A-Za-z0-9].*https?:\\/\\/|$)`, 'g');
+        const cleaned = current
+            .replace(markerPattern, '')
+            .replace(brokenBlockPattern, '')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
 
-        if (!current) {
+        if (!cleaned) {
             return wrappedBlock;
         }
-        if (markerPattern.test(current)) {
-            return current.replace(markerPattern, wrappedBlock);
-        }
-        return `${wrappedBlock}\n\n${current}`;
+        return `${wrappedBlock}\n\n${cleaned}`;
     }
 
-    function syncCategoryPrompt(category) {
+    window.syncCategoryPrompt = (category) => {
         const content = newsletterContent[category] || (newsletterContent[category] = { intro: '', outro: '' });
-        const mergedPrompt = mergePromptWithCategoryLinks(content.prompt || '', category);
+        const mergedPrompt = mergePromptWithCategoryLinks('', category);
         content.prompt = mergedPrompt;
 
         const promptEl = document.getElementById('editor-prompt');
@@ -1103,7 +1139,7 @@ document.addEventListener('DOMContentLoaded', () => {
             promptEl.value = mergedPrompt;
         }
         saveState();
-    }
+    };
 
     function getSelectedCategoryResults() {
         if (!newsletterContent.selectedResults) {
@@ -1236,8 +1272,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const templateEl = document.getElementById('editor-template');
         if (templateEl) templateEl.value = templateValue || '';
         const listEl = document.getElementById('editor-articles-list');
-        if (listEl && typeof getArticlesForCategory === 'function') {
-            const catArticles = getArticlesForCategory(currentEditorTab);
+        if (listEl && typeof getSummaryArticlesForCategory === 'function') {
+            const catArticles = getSummaryArticlesForCategory(currentEditorTab);
             const listHtml = catArticles.length
                 ? catArticles.map((a, i) => {
                     const title = escapeHtml(a.title || 'Untitled');
@@ -1249,8 +1285,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         ${url ? `<a href="${url}" target="_blank" style="font-size: 0.78rem; word-break: break-all;">${url}</a>` : '<span class="text-muted">No URL</span>'}
                     </div>`;
                 }).join('')
-                : '<span class="text-muted">No articles with ' + currentEditorTab + ' rank.</span>';
-            listEl.innerHTML = '<label style="font-weight: 600;">Articles for ' + currentEditorTab + '</label><div style="max-height: 280px; overflow-y: auto; margin-top: 6px; line-height: 1.4;">' + listHtml + '</div><div style="font-size: 0.7rem; color: #999; margin-top: 4px;">This list is pulled from the ranked articles in Article View for ' + currentEditorTab + '.</div>';
+                : '<span class="text-muted">No priority 1-4 articles for ' + currentEditorTab + '.</span>';
+            listEl.innerHTML = '<label style="font-weight: 600;">Summary Source Articles for ' + currentEditorTab + '</label><div style="max-height: 280px; overflow-y: auto; margin-top: 6px; line-height: 1.4;">' + listHtml + '</div><div style="font-size: 0.7rem; color: #999; margin-top: 4px;">Only articles marked 1, 2, 3, or 4 in Article View/Image View are used here for summary generation.</div>';
         }
     };
 
@@ -1322,11 +1358,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const rulesOnEl = document.getElementById(`rules-on-${category}`);
         const isUseRules = rulesOnEl ? rulesOnEl.checked : true;
         const summaryRules = isUseRules ? (newsletterContent.summaryRules || '') : '';
-        const categoryArticles = getArticlesForCategory(category);
+        const categoryArticles = getSummaryArticlesForCategory(category);
         const btnText = document.getElementById(`gen-btn-text-${category}`);
 
         if (!prompt) return alert('Please enter a prompt.');
-        if (categoryArticles.length === 0) return alert(`No ranked articles found for ${category}.`);
+        if (categoryArticles.length === 0) return alert(`No priority-ranked articles (1-4) found for ${category}.`);
 
         btnText.textContent = 'Generating...';
 
@@ -1433,6 +1469,8 @@ document.addEventListener('DOMContentLoaded', () => {
             INV: getArticlesForCategory('INV').length,
             COOL_FINDS: articles.filter(a => a.status === 'COOL FINDS').length
         };
+        const generatedSubjects = newsletterContent.generatedSubjects || { MED: '', THC: '', CBD: '', INV: '' };
+        const subjectPrompt = normalizeSubjectPrompt(newsletterContent.subjectPrompt);
 
         summary.innerHTML = `
             <h3>Newsletter Summary</h3>
@@ -1460,6 +1498,27 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span>${stats.COOL_FINDS} Finds</span>
                 </div>
             </div>
+            <div style="margin-top: 22px; padding: 16px; border: 1px solid #e5e7eb; border-radius: 10px; background: #fafafa;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; margin-bottom:12px;">
+                    <div>
+                        <div style="font-size: 1rem; font-weight: 700; margin-bottom: 4px;">Subject Generator</div>
+                        <div style="font-size: 0.82rem; color:#666;">Uses the top 3 priority articles for each category and generates clicky email subjects with emojis.</div>
+                    </div>
+                    <button id="btn-generate-subjects" class="btn btn-primary btn-sm" onclick="generateAllSubjects()"><span id="btn-generate-subjects-text">Generate Subjects</span></button>
+                </div>
+                <textarea class="form-control" rows="3" style="margin-bottom: 12px; font-size: 0.9rem;" oninput="updateSubjectPrompt(this.value)">${escapeHtml(subjectPrompt)}</textarea>
+                <div style="display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+                    ${['MED', 'THC', 'CBD', 'INV'].map((cat) => `
+                        <div style="padding: 12px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px;">
+                                <strong>${cat}</strong>
+                                <button class="btn btn-outline btn-sm" onclick="copyGeneratedSubject('${cat}')">Copy</button>
+                            </div>
+                            <textarea class="form-control" rows="3" style="font-size: 0.88rem; background:#fff;" oninput="updateGeneratedSubject('${cat}', this.value)" placeholder="Generate a subject for ${cat}...">${escapeHtml(generatedSubjects[cat] || '')}</textarea>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
         `;
         const uploadBtn = document.getElementById('btn-upload-newsletters');
         const exportGenBtn = document.getElementById('btn-export-generated');
@@ -1476,6 +1535,12 @@ document.addEventListener('DOMContentLoaded', () => {
     function getSelectedOrGeneratedSummary(category) {
         const selectedResults = getSelectedCategoryResults();
         return (selectedResults[category] || (newsletterContent[category] && newsletterContent[category].result) || '').trim();
+    }
+
+    function getSubjectArticlesForCategory(category) {
+        return getSummaryArticlesForCategory(category)
+            .filter(a => ['Y', 'YM'].includes(a.status))
+            .slice(0, 3);
     }
 
     const TEMPLATE_FIXED_CONTENT = {
@@ -1870,6 +1935,80 @@ document.addEventListener('DOMContentLoaded', () => {
         const iframe = frameWrap.querySelector('iframe');
         if (iframe) iframe.srcdoc = html;
     }
+
+    window.updateSubjectPrompt = (value) => {
+        newsletterContent.subjectPrompt = normalizeSubjectPrompt(value);
+        saveState();
+    };
+
+    window.updateGeneratedSubject = (category, value) => {
+        if (!newsletterContent.generatedSubjects) {
+            newsletterContent.generatedSubjects = { MED: '', THC: '', CBD: '', INV: '' };
+        }
+        newsletterContent.generatedSubjects[category] = value;
+        saveState();
+    };
+
+    window.copyGeneratedSubject = async (category) => {
+        const text = (newsletterContent.generatedSubjects && newsletterContent.generatedSubjects[category]) || '';
+        if (!text.trim()) return alert(`No ${category} subject to copy yet.`);
+        await navigator.clipboard.writeText(text);
+        alert(`${category} subject copied.`);
+    };
+
+    window.generateAllSubjects = async () => {
+        const categories = ['MED', 'THC', 'CBD', 'INV'];
+        const btn = document.getElementById('btn-generate-subjects');
+        const btnText = document.getElementById('btn-generate-subjects-text');
+        const categoryArticles = {};
+        categories.forEach((category) => {
+            categoryArticles[category] = getSubjectArticlesForCategory(category).map((article, index) => ({
+                index: index + 1,
+                title: article.title || '',
+                url: article.url || '',
+                date: article.date || '',
+                description: article.description || ''
+            }));
+        });
+
+        const hasAnyArticles = categories.some((category) => categoryArticles[category].length > 0);
+        if (!hasAnyArticles) {
+            return alert('No top priority articles (1, 2, 3) are available yet for subject generation.');
+        }
+
+        const prompt = normalizeSubjectPrompt(newsletterContent.subjectPrompt);
+        if (btn) btn.disabled = true;
+        if (btnText) btnText.textContent = 'Generating...';
+        try {
+            const res = await fetch('/api/articles/generate-subjects', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    prompt,
+                    categories: categoryArticles,
+                    model: 'gemini-flash-3-0'
+                })
+            });
+            const data = await parseJsonResponse(res, 'Subject generation route did not return JSON. Restart the app server and try again.');
+            if (!res.ok || !data.success || !data.subjects) {
+                throw new Error(data.error || 'Failed to generate subjects');
+            }
+            newsletterContent.generatedSubjects = {
+                MED: data.subjects.MED || '',
+                THC: data.subjects.THC || '',
+                CBD: data.subjects.CBD || '',
+                INV: data.subjects.INV || ''
+            };
+            saveState();
+            renderConfirmationView();
+        } catch (e) {
+            console.error(e);
+            alert('Failed to generate subjects: ' + e.message);
+        } finally {
+            if (btn) btn.disabled = false;
+            if (btnText) btnText.textContent = 'Generate Subjects';
+        }
+    };
 
     window.exportSpreadsheet = () => {
         // Filter unique articles by URL to avoid duplicates in spreadsheet
@@ -2529,17 +2668,6 @@ document.addEventListener('DOMContentLoaded', () => {
             batchSelect.value = batchFilter || '';
         }
 
-        // Add Top Controls
-        const controls = document.createElement('div');
-        controls.className = 'controls-row';
-        controls.style.justifyContent = 'space-between';
-        controls.style.marginBottom = '20px';
-        controls.innerHTML = `
-            <button class="btn btn-secondary" onclick="switchStep(1)">Back: Search</button>
-            <button class="btn btn-primary" onclick="switchStep(3)">Next: Image View</button>
-        `;
-        list.appendChild(controls);
-
         if (articles.length === 0) {
             list.innerHTML += '<div style="padding: 20px; text-align: center; color: #777;">No articles found. Please try searching again.</div>';
             updateStats();
@@ -2892,7 +3020,26 @@ document.addEventListener('DOMContentLoaded', () => {
         renderArticles();
     };
 
-    // Articles for a category in display order: same filter + sort as table (numbers 1,2,3 first, then Y, etc.).
+    function isPrioritySummaryRank(rank) {
+        const value = String(rank ?? '').trim();
+        return ['1', '2', '3', '4'].includes(value);
+    }
+
+    // Articles used for Text summaries: only explicit priority ranks 1-4.
+    function getSummaryArticlesForCategory(category) {
+        return articles.filter(a => {
+            if (!['Y', 'YM', 'COOL FINDS', 'LATER COOL'].includes(a.status)) return false;
+            const rank = getRankForSort(a, category);
+            return isPrioritySummaryRank(rank);
+        }).sort((a, b) => {
+            const rA = rankToSortValue(getRankForSort(a, category));
+            const rB = rankToSortValue(getRankForSort(b, category));
+            if (rA !== rB) return rA - rB;
+            return (a.title || '').localeCompare(b.title || '');
+        });
+    }
+
+    // Articles shown in Confirmation/final newsletter: broader ranked + selected article set.
     function getArticlesForCategory(category) {
         return articles.filter(a => {
             if (!['Y', 'YM', 'COOL FINDS', 'LATER COOL'].includes(a.status)) return false;
@@ -2911,12 +3058,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!statsEl) return;
 
         const counts = { MED: 0, THC: 0, CBD: 0, INV: 0 };
-        let validStatusCount = 0;
-        const validStatuses = ['Y', 'YM', 'COOL FINDS'];
+        let selectedCount = 0;
 
         articles.forEach(a => {
-            const isValid = validStatuses.includes(a.status);
-            if (isValid) validStatusCount++;
+            if (a.selected !== false) selectedCount++;
 
             if (a.ranks) {
                 ['MED', 'THC', 'CBD', 'INV'].forEach(cat => {
@@ -2932,7 +3077,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const statsHtml = `
             ${sessionLabel}
             <span class="stat-item" title="Total articles in list">Total: ${articles.length}</span>
-            <span class="stat-item" style="background:#e0f7fa; color:#006064;" title="Status Y/YM/COOL FINDS">Selected: ${validStatusCount}</span>
+            <span class="stat-item" style="background:#e0f7fa; color:#006064;" title="Articles checked in the Select column">Selected: ${selectedCount}</span>
             <span class="stat-item" style="background:#e3f2fd; color:#0d47a1;">MED: ${counts.MED}</span>
             <span class="stat-item" style="background:#e8f5e9; color:#1b5e20;">THC: ${counts.THC}</span>
             <span class="stat-item" style="background:#fff3e0; color:#e65100;">CBD: ${counts.CBD}</span>
@@ -3018,7 +3163,13 @@ document.addEventListener('DOMContentLoaded', () => {
         archivedArticles = session.archivedArticles || [];
         inspirationalImages = session.inspirationalImages || [];
         const nc = session.newsletterContent || { MED: { intro: '', outro: '' }, THC: { intro: '', outro: '' }, CBD: { intro: '', outro: '' }, INV: { intro: '', outro: '' } };
-        newsletterContent = { ...nc, templates: nc.templates || { MED: '', THC: '', CBD: '', INV: '' } };
+        newsletterContent = {
+            ...nc,
+            templates: nc.templates || { MED: '', THC: '', CBD: '', INV: '' },
+            selectedGreeting: nc.selectedGreeting || DEFAULT_GREETING,
+            subjectPrompt: normalizeSubjectPrompt(nc.subjectPrompt),
+            generatedSubjects: nc.generatedSubjects || { MED: '', THC: '', CBD: '', INV: '' }
+        };
 
         document.getElementById('newsletter-name').value = name;
         currentSessionName = name;

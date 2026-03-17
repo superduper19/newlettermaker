@@ -172,20 +172,23 @@
                     <!-- Articles Table Header -->
                 <div class="articles-table-header">
                     <div class="col-selected">
-                        Select<br>
-                        <span style="font-size: 0.7rem; cursor: pointer; text-decoration: underline;" onclick="toggleAllArticles(true)">All</span> / 
-                        <span style="font-size: 0.7rem; cursor: pointer; text-decoration: underline;" onclick="toggleAllArticles(false)">None</span>
+                        <div class="header-label">Select</div>
+                        <div class="header-inline-actions">
+                            <button type="button" class="header-link-btn" onclick="toggleAllArticles(true)">All</button>
+                            <span>/</span>
+                            <button type="button" class="header-link-btn" onclick="toggleAllArticles(false)">None</button>
+                        </div>
                     </div>
-                    <div class="col-article">Article</div>
-                    <div class="col-date">Date</div>
-                    <div class="col-paywall">Paywall</div>
-                    <div class="col-status header-sort" onclick="sortArticles('status')">Status</div>
-                    <div class="col-cat header-sort" onclick="sortArticles('MED')">MED</div>
-                    <div class="col-cat header-sort" onclick="sortArticles('THC')">THC</div>
-                    <div class="col-cat header-sort" onclick="sortArticles('CBD')">CBD</div>
-                    <div class="col-cat header-sort" onclick="sortArticles('INV')">INV</div>
-                    <div class="col-keyword">Notes</div>
-                    <div class="col-actions">Actions</div>
+                    <div class="col-article"><div class="header-label">Article</div></div>
+                    <div class="col-date"><div class="header-label">Date</div></div>
+                    <div class="col-paywall"><div class="header-label">Paywall</div></div>
+                    <div class="col-status header-sort" onclick="sortArticles('status')"><div class="header-label">Status</div></div>
+                    <div class="col-cat header-sort" onclick="sortArticles('MED')"><div class="header-label">MED</div></div>
+                    <div class="col-cat header-sort" onclick="sortArticles('THC')"><div class="header-label">THC</div></div>
+                    <div class="col-cat header-sort" onclick="sortArticles('CBD')"><div class="header-label">CBD</div></div>
+                    <div class="col-cat header-sort" onclick="sortArticles('INV')"><div class="header-label">INV</div></div>
+                    <div class="col-keyword"><div class="header-label">Notes</div></div>
+                    <div class="col-actions"><div class="header-label">Actions</div></div>
                 </div>
 
                     <div id="articles-list" class="articles-list">
@@ -336,13 +339,6 @@
                             <!-- Category newsletter previews -->
                         </div>
                         
-                        <div class="form-group">
-                            <label>Export Actions</label>
-                            <div style="display: flex; gap: 10px;">
-                                <button class="btn btn-success" onclick="exportNewsletter()">Download JSON</button>
-                                <button class="btn btn-outline" onclick="window.print()">Print / PDF</button>
-                            </div>
-                        </div>
                     </div>
                     <div class="controls-row" style="margin-top: 30px; justify-content: space-between;">
                         <button id="btn-back-step-5" class="btn btn-secondary">Back</button>
