@@ -105,7 +105,14 @@ document.addEventListener('DOMContentLoaded', () => {
         '6.  If a paywall prevents access, explicitly state that the article is',
         '    paywalled.',
         '7.  If partial access is available, only summarize the visible content.',
-        '8. Dont use em dashes'
+        '8. Dont use em dashes',
+        '9. Final product should be a paragraph',
+        '10. Each article should be summarized by one sentence.',
+        '12. Do not use past participles',
+        '13. make it casual',
+        '14. Here is the lancet article to summarize into a sentence.',
+        '15. Dont include the names of the periodicals or the studies',
+        '16. Keep sentences succinct but give important data if applicable.'
     ].join('\n');
     function normalizeSummaryRules(value) {
         const text = String(value || '').trim();
@@ -1574,7 +1581,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div style="font-size: 1rem; font-weight: 700; margin-bottom: 4px;">Subject Generator</div>
                         <div style="font-size: 0.82rem; color:#666;">Uses the top 3 priority articles for each category and generates clicky email subjects with emojis.</div>
                     </div>
-                    <button id="btn-generate-subjects" class="btn btn-primary btn-sm" onclick="generateAllSubjects()"><span id="btn-generate-subjects-text">Generate Subjects</span></button>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <button id="btn-generate-subjects" class="btn btn-primary btn-sm" onclick="generateAllSubjects()"><span id="btn-generate-subjects-text">Generate Subjects</span></button>
+                        <button class="btn btn-outline btn-sm" type="button" onclick="pushStateToServer()" title="Save the subject prompt and generated subjects to Supabase">Push To Server</button>
+                    </div>
                 </div>
                 <textarea class="form-control" rows="3" style="margin-bottom: 12px; font-size: 0.9rem;" oninput="updateSubjectPrompt(this.value)">${escapeHtml(subjectPrompt)}</textarea>
                 <div style="display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
