@@ -4,24 +4,28 @@
   "description": "",
   "main": "server.js",
   "scripts": {
+    "build": "tailwindcss -i ./src/style.css -o ./public/css/style.css --minify",
     "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo 'Error: no test specified' && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "packageManager": "pnpm@10.33.0",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
     "@google/generative-ai": "^0.24.1",
+    "@tailwindcss/cli": "4.2.2",
     "@supabase/supabase-js": "^2.98.0",
     "basic-ftp": "^5.2.0",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
-    "multer": "^2.0.2",
+    "multer": "^2.1.1",
     "node-fetch": "^3.3.2",
     "openai": "^6.25.0",
-    "pg": "^8.19.0",
+    "pg": "^8.20.0",
+    "tailwindcss": "4.2.2",
     "uuid": "^13.0.0",
     "xlsx": "^0.18.5"
   }

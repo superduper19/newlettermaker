@@ -1,378 +1,381 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Newsletter Maker</title>
-    <link rel="stylesheet" href="/css/style.css">
-    <!-- Font Inter -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Newsletter Maker</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <!-- Font Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div id="app">
-        <!-- Navigation Bar -->
-        <nav class="main-nav">
-            <div class="nav-container">
-                <div class="nav-steps">
-                    <div class="step active" data-step="1">Article Search</div>
-                    <div class="step" data-step="2">Article View</div>
-                    <div class="step" data-step="3">Image View</div>
-                    <div class="step" data-step="4">Inspirational Images</div>
-                    <div class="step" data-step="5">Text</div>
-                    <div class="step" data-step="6">Confirmation</div>
-                </div>
-                <div class="nav-actions">
-                    <div class="model-select-global">
-                        <select id="ai-model" class="form-control" style="width: auto; padding: 2px 5px; font-size: 0.85rem;">
-                            <option value="claude-opus-4-6" selected>Claude Opus 4.6 (Best)</option>
-                            <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (Fast)</option>
-                            <option value="claude-haiku-4-5">Claude Haiku 4.5 (Fastest)</option>
-                            <option value="gemini-flash-3-0">Gemini Flash 3.0</option>
-                            <option value="gemini-flash-3-1-pro">Gemini Flash 3.1 Pro</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-        </nav>
-
-        <!-- Main Content Area -->
-        <main class="content-area">
-            <!-- Step 1: Ingestion -->
-            <section id="step-1" class="view active">
-                <div class="container">
-                    <div class="card">
-                        <div class="card-header">
-                            <h2>Setup Newsletter</h2>
-                        </div>
-                        <div class="card-body">
-                            <!-- Newsletter Name -->
-                            <div class="form-group" style="margin-bottom: 20px;">
-                                <label style="font-size: 0.85rem; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 8px;">Newsletter Name</label>
-                                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                                    <input type="text" id="newsletter-name" placeholder="e.g. Week 1 - Tech Update" value="Week 1" style="max-width: 400px;">
-                                    <button type="button" class="btn btn-primary btn-sm" onclick="saveSession()" title="Save current name and articles as a session (no search needed)">Save current</button>
-                                </div>
-                            </div>
-
-                            <hr class="divider">
-
-                            <!-- AI Prompt Section -->
-                            <div class="form-group">
-                                <label class="section-label" style="margin-bottom: 5px;">Find Articles with AI</label>
-                                <textarea id="ai-prompt" rows="4" placeholder="Enter instructions for AI to generate articles..."></textarea>
-                                
-                                <div id="recent-prompts" class="recent-prompts" style="margin-top: 5px; margin-bottom: 10px; font-size: 0.85rem; color: var(--text-muted);">
-                                    <!-- Recent prompts will be injected here -->
-                                </div>
-
-                                <div class="controls-row" style="justify-content: flex-end; gap: 10px; align-items: center;">
-                                    <span id="search-status" class="text-success" style="font-weight: 500; display: none;"></span>
-                                    <button id="btn-search-articles" class="btn btn-primary">Find Articles</button>
-                                    <button id="btn-clear-workspace" class="btn btn-secondary" onclick="clearWorkspace()" style="background: #6c757d;">Clear All</button>
-                                    <button id="btn-next-step-2" class="btn btn-outline" style="display: none;">Next: Review Articles</button>
-                                </div>
-                            </div>
-
-                            <hr class="divider">
-
-                            <!-- File Upload Section -->
-                            <div class="form-group">
-                                <label class="section-label">Or Upload Excel Sheet</label>
-                                <div class="controls-row">
-                                    <div class="file-input-wrapper">
-                                        <label for="excel-upload" class="btn btn-secondary">Choose File</label>
-                                        <input type="file" id="excel-upload" accept=".xlsx,.xls" hidden>
-                                        <span id="file-name" class="file-name">No file chosen</span>
-                                    </div>
-                                    <button id="btn-upload-file" class="btn btn-primary">Upload & Load</button>
-                                </div>
-                                <div style="margin-top: 10px;">
-                                    <button id="btn-load-template" class="btn btn-outline btn-sm">Download Template</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Step 2: Article View -->
-            <section id="step-2" class="view">
-                <div class="card" style="max-width: 1400px;">
-                    <div class="card-header">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <h2>Review & Select Articles</h2>
-                            <div id="article-stats" class="article-stats">
-                                <span class="stat-item">Total: 0</span>
-                            </div>
-                        </div>
-                        <p class="text-muted">Review generated articles, assign categories, and select for newsletter.</p>
-                    </div>
-
-                    <!-- Save / Load Controls -->
-                    <div style="padding: 15px 20px; background: #f0f4f8; border-bottom: 1px solid #ddd;">
-                        <div id="state-load-hint" style="display: none; margin-bottom: 10px; padding: 8px 12px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; font-size: 0.85rem; color: #856404;">
-                            <span id="state-load-hint-text">Loading…</span>
-                        </div>
-                        <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
-                            <button class="btn btn-primary btn-sm" onclick="saveSession()">Save</button>
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <label style="font-size: 0.85rem; font-weight: 600; color: #555; white-space: nowrap;">Load Saved:</label>
-                                <select id="saved-sessions-dropdown" style="padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; min-width: 200px;">
-                                    <option value="">-- Select --</option>
-                                </select>
-                                <button class="btn btn-secondary btn-sm" onclick="loadSession()">Load</button>
-                                <button class="btn btn-sm" style="color: #d32f2f; border: 1px solid #d32f2f; background: transparent; padding: 5px 10px; font-size: 0.8rem;" onclick="deleteSession()">Delete</button>
-                            </div>
-                            <button class="btn btn-primary btn-sm" type="button" onclick="refreshStateFromServer()" title="Load Week 1 and other saved sessions from Supabase" id="btn-refresh-state">Refresh from server</button>
-                            <button class="btn btn-outline btn-sm" type="button" onclick="pushStateToServer()" title="Save current articles and archive to the database">Push to server</button>
-                            <button class="btn btn-outline btn-sm" type="button" onclick="getLaterCoolFinds()" title="Bring back all Later Cool finds to the top of the list">Get Later Cool Finds</button>
-                        </div>
-                    </div>
-
-                    <!-- AI Query Box with Toggle -->
-                    <div style="padding: 15px 20px; border-bottom: 1px solid #eee;">
-                        <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 10px;">
-                            <label style="font-size: 0.95rem; font-weight: 600; color: #333;">AI Query</label>
-                            <div style="display: flex; gap: 5px; background: #eee; border-radius: 6px; padding: 2px;">
-                                <button id="toggle-search-more" class="btn btn-sm toggle-btn active" onclick="setQueryMode('search')" style="padding: 4px 14px; font-size: 0.8rem;">Find More Articles</button>
-                                <button id="toggle-modify" class="btn btn-sm toggle-btn" onclick="setQueryMode('modify')" style="padding: 4px 14px; font-size: 0.8rem;">Modify Existing</button>
-                            </div>
-                        </div>
-                        <div style="display: flex; gap: 10px;">
-                            <textarea id="step2-query" rows="2" placeholder="Search for more articles to add..." style="flex: 1; padding: 10px; font-size: 0.95rem;"></textarea>
-                            <button id="btn-step2-query" class="btn btn-primary" onclick="executeStep2Query()">Find Articles</button>
-                        </div>
-                        <div id="step2-query-status" style="font-size: 0.85rem; color: #4caf50; font-weight: 500; margin-top: 5px; display: none;"></div>
-                    </div>
-
-                    <!-- Add article + Batch filter + Sort -->
-                    <div style="margin-bottom: 10px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-                        <button type="button" class="btn btn-primary btn-sm" onclick="openAddArticleModal()">+ Add article</button>
-                        <label style="font-size: 0.8rem; color: #555;">Batch:</label>
-                        <select id="batch-filter-select" onchange="setBatchFilter(this.value); renderArticles();" style="padding: 4px 8px; font-size: 0.85rem;">
-                            <option value="">All</option>
-                        </select>
-                        <button type="button" class="btn btn-outline btn-sm" onclick="sortByRanks()" title="Sort by MED, then THC, then CBD, then INV (lowest number first)">Sort</button>
-                    </div>
-                    <!-- Articles Table Header -->
-                <div class="articles-table-header">
-                    <div class="col-selected">
-                        Select<br>
-                        <span style="font-size: 0.7rem; cursor: pointer; text-decoration: underline;" onclick="toggleAllArticles(true)">All</span> / 
-                        <span style="font-size: 0.7rem; cursor: pointer; text-decoration: underline;" onclick="toggleAllArticles(false)">None</span>
-                    </div>
-                    <div class="col-article">Article</div>
-                    <div class="col-date">Date</div>
-                    <div class="col-paywall">Paywall</div>
-                    <div class="col-status header-sort" onclick="sortArticles('status')">Status</div>
-                    <div class="col-cat header-sort" onclick="sortArticles('MED')">MED</div>
-                    <div class="col-cat header-sort" onclick="sortArticles('THC')">THC</div>
-                    <div class="col-cat header-sort" onclick="sortArticles('CBD')">CBD</div>
-                    <div class="col-cat header-sort" onclick="sortArticles('INV')">INV</div>
-                    <div class="col-keyword">Notes</div>
-                    <div class="col-actions">Actions</div>
-                </div>
-
-                    <div id="articles-list" class="articles-list">
-                        <!-- Rows will be injected here -->
-                    </div>
-
-                    <div id="article-stats-footer" class="article-stats" style="margin-top: 15px; padding: 10px 0; border-top: 1px solid #eee;"></div>
-
-                    <div class="controls-row" style="margin-top: 30px; justify-content: space-between;">
-                        <button id="btn-back-step-1" class="btn btn-secondary">Back</button>
-                        <div style="display: flex; gap: 10px;">
-                            <button class="btn btn-success btn-sm" onclick="exportArticlesXls()">Export XLS</button>
-                            <button id="btn-next-step-3" class="btn btn-primary">Next: Image View</button>
-                        </div>
-                    </div>
-                </div>
-            </section>
-            <section id="step-3" class="view">
-                <div class="card" style="max-width: 1400px;">
-                    <div class="card-header">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <h2>Select Images</h2>
-                            <div id="image-view-stats" class="article-stats">
-                                <span class="stat-item">Total: 0</span>
-                            </div>
-                        </div>
-                        <p class="text-muted">Choose an image for each selected article.</p>
-                        <div style="margin-top: 10px; display: flex; gap: 10px;">
-                            <button class="btn btn-primary btn-sm" onclick="publishAllImagesToPurablis()">Publish Selected to purablis</button>
-                            <button class="btn btn-success btn-sm" onclick="downloadAllImagesZip()">Download All Images (ZIP)</button>
-                        </div>
-                    </div>
-
-                    <!-- Save / Load Controls (same as Article View) -->
-                    <div style="padding: 15px 20px; background: #f0f4f8; border-bottom: 1px solid #ddd;">
-                        <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
-                            <button class="btn btn-primary btn-sm" onclick="saveSession()">Save</button>
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <label style="font-size: 0.85rem; font-weight: 600; color: #555; white-space: nowrap;">Load Saved:</label>
-                                <select id="saved-sessions-dropdown-step3" style="padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; min-width: 200px;">
-                                    <option value="">-- Select --</option>
-                                </select>
-                                <button class="btn btn-secondary btn-sm" onclick="loadSessionFromStep3()">Load</button>
-                                <button class="btn btn-sm" style="color: #d32f2f; border: 1px solid #d32f2f; background: transparent; padding: 5px 10px; font-size: 0.8rem;" onclick="deleteSessionFromStep3()">Delete</button>
-                            </div>
-                            <button class="btn btn-primary btn-sm" type="button" onclick="refreshStateFromServer()" title="Load Week 1 and other saved sessions from Supabase">Refresh from server</button>
-                            <button class="btn btn-outline btn-sm" type="button" onclick="pushStateToServer()" title="Save current articles and archive to the database">Push to server</button>
-                        </div>
-                    </div>
-                    
-                    <div id="images-list" class="images-list" style="padding: 0;">
-                    </div>
-
-                    <div class="controls-row" style="margin-top: 30px; justify-content: space-between; padding: 0 15px 15px;">
-                        <button id="btn-back-step-2" class="btn btn-secondary">Back</button>
-                        <button id="btn-next-step-4" class="btn btn-primary">Next: Inspirational Images</button>
-                    </div>
-                </div>
-            </section>
-
-            <section id="step-4" class="view">
-                <div class="card">
-                    <div class="card-header">
-                        <h2>Inspirational Images</h2>
-                        <p class="text-muted">Select inspirational images for the newsletter headers.</p>
-                    </div>
-                    <div class="card-body">
-                        <div class="form-group">
-                            <label>Upload Image</label>
-                            <div style="display: flex; gap: 10px; align-items: center;">
-                                <input type="file" accept="image/*" id="insp-upload-input" style="flex: 1;" class="form-control">
-                                <button class="btn btn-primary" onclick="uploadInspirationalImage()" id="btn-insp-upload">Upload</button>
-                            </div>
-                            <div id="insp-upload-status" style="font-size: 0.8rem; color: #888; margin-top: 4px;"></div>
-                        </div>
-
-                        <div class="form-group" style="margin-top: 15px;">
-                            <label>Or Add Image by URL</label>
-                            <div style="display: flex; gap: 10px;">
-                                <input type="text" id="insp-url-input" placeholder="https://example.com/image.jpg" style="flex: 1;" class="form-control">
-                                <button class="btn btn-secondary" onclick="addInspirationalUrl()">Add URL</button>
-                            </div>
-                        </div>
-
-                        <hr class="divider">
-
-                        <h3>Select from Gallery</h3>
-                        <div id="insp-gallery-grid" class="image-grid-compact" style="margin-bottom: 20px;">
-                            <!-- Pre-loaded images injected here -->
-                        </div>
-
-                        <hr class="divider">
-
-                        <h3>Selected Images</h3>
-                        <div id="selected-insp-grid" class="image-grid-compact" style="margin-bottom: 20px;">
-                            <!-- Selected -->
-                        </div>
-                    </div>
-                    <div class="controls-row" style="margin-top: 30px; justify-content: space-between;">
-                        <button id="btn-back-step-3" class="btn btn-secondary">Back</button>
-                        <button id="btn-next-step-5" class="btn btn-primary">Next: Text Editor</button>
-                    </div>
-                </div>
-            </section>
-
-            <section id="step-5" class="view">
-                <div class="card" style="max-width: 1400px;">
-                    <div class="card-header">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <h2>Text Editor</h2>
-                            <button class="btn btn-primary btn-sm" onclick="saveSession()">Save</button>
-                        </div>
-                        <p class="text-muted">Write prompts, import article links, generate summaries with AI.</p>
-                    </div>
-                    <div class="card-body">
-                        <div class="tabs-container" style="margin-bottom: 20px; border-bottom: 1px solid #ddd;">
-                            <button class="tab-btn active" onclick="switchEditorTab('MED')">MED</button>
-                            <button class="tab-btn" onclick="switchEditorTab('THC')">THC</button>
-                            <button class="tab-btn" onclick="switchEditorTab('CBD')">CBD</button>
-                            <button class="tab-btn" onclick="switchEditorTab('INV')">INV</button>
-                        </div>
-
-                        <div id="editor-content">
-                            <!-- Dynamic Content Injected Here -->
-                        </div>
-                    </div>
-                    <div class="controls-row" style="margin-top: 30px; justify-content: space-between;">
-                        <button id="btn-back-step-4" class="btn btn-secondary">Back</button>
-                        <button id="btn-next-step-6" class="btn btn-primary">Next: Confirmation</button>
-                    </div>
-                </div>
-            </section>
-
-            <section id="step-6" class="view">
-                <div class="card">
-                    <div class="card-header">
-                        <h2>Confirmation</h2>
-                        <p class="text-muted">Review and publish your newsletter.</p>
-                    </div>
-                    <div class="card-body">
-                        <div id="confirmation-summary" style="margin-bottom: 30px;">
-                            <!-- Summary stats -->
-                        </div>
-                        
-                        <div class="form-group">
-                            <label>Export Actions</label>
-                            <div style="display: flex; gap: 10px;">
-                                <button class="btn btn-success" onclick="exportNewsletter()">Download JSON</button>
-                                <button class="btn btn-outline" onclick="window.print()">Print / PDF</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="controls-row" style="margin-top: 30px; justify-content: space-between;">
-                        <button id="btn-back-step-5" class="btn btn-secondary">Back</button>
-                        <button class="btn btn-primary" onclick="alert('Publishing functionality to be implemented!')">Publish Newsletter</button>
-                    </div>
-                </div>
-            </section>
-        </main>
-    </div>
-
-    <!-- Add Article Modal -->
-    <div id="add-article-modal" onclick="if(event.target===this) window.closeAddArticleModal&&closeAddArticleModal()" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 1000; align-items: center; justify-content: center; flex-direction: column;">
-        <div style="background: #fff; border-radius: 8px; padding: 20px; max-width: 420px; width: 90%; box-shadow: 0 4px 20px rgba(0,0,0,0.15);">
-            <h3 style="margin: 0 0 15px 0; font-size: 1.1rem;">Add article (at top)</h3>
-            <div style="display: flex; flex-direction: column; gap: 10px;">
-                <div>
-                    <label style="font-size: 0.8rem; color: #555;">Title</label>
-                    <input type="text" id="add-article-title" placeholder="Article title" style="width: 100%; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem;">
-                </div>
-                <div>
-                    <label style="font-size: 0.8rem; color: #555;">URL</label>
-                    <input type="url" id="add-article-url" placeholder="https://..." style="width: 100%; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem;">
-                </div>
-                <div>
-                    <label style="font-size: 0.8rem; color: #555;">Status</label>
-                    <select id="add-article-status" style="width: 100%; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem;">
-                        <option value="Y">Y</option>
-                        <option value="YM">YM</option>
-                        <option value="M">M</option>
-                        <option value="NO">NO</option>
-                        <option value="COOL FINDS">COOL FINDS</option>
-                        <option value="LATER COOL">Later Cool</option>
-                    </select>
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px;">
-                    <div><label style="font-size: 0.7rem; color: #555;">MED</label><input type="text" id="add-article-med" placeholder="" style="width: 100%; padding: 4px; font-size: 0.85rem;"></div>
-                    <div><label style="font-size: 0.7rem; color: #555;">THC</label><input type="text" id="add-article-thc" placeholder="" style="width: 100%; padding: 4px; font-size: 0.85rem;"></div>
-                    <div><label style="font-size: 0.7rem; color: #555;">CBD</label><input type="text" id="add-article-cbd" placeholder="" style="width: 100%; padding: 4px; font-size: 0.85rem;"></div>
-                    <div><label style="font-size: 0.7rem; color: #555;">INV</label><input type="text" id="add-article-inv" placeholder="" style="width: 100%; padding: 4px; font-size: 0.85rem;"></div>
-                </div>
-            </div>
-            <div style="margin-top: 18px; display: flex; gap: 8px; justify-content: flex-end;">
-                <button type="button" class="btn btn-secondary btn-sm" onclick="closeAddArticleModal()">Cancel</button>
-                <button type="button" class="btn btn-primary btn-sm" onclick="addArticleFromModal()">Add at top</button>
-            </div>
+<div id="app">
+  <!-- Navigation Bar -->
+  <nav class="main-nav">
+    <div class="nav-container">
+      <div class="nav-steps">
+        <div class="step active" data-step="1">Article Search</div>
+        <div class="step" data-step="2">Article View</div>
+        <div class="step" data-step="3">Image View</div>
+        <div class="step" data-step="4">Inspirational Images</div>
+        <div class="step" data-step="5">Text</div>
+        <div class="step" data-step="6">Confirmation</div>
+      </div>
+      <div class="nav-actions">
+        <div class="model-select-global">
+          <select id="ai-model" class="form-control w-auto py-0.5 px-1.5 text-sm">
+            <option value="claude-opus-4-6" selected>Claude Opus 4.6 (Best)</option>
+            <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (Fast)</option>
+            <option value="claude-haiku-4-5">Claude Haiku 4.5 (Fastest)</option>
+            <option value="gemini-flash-3-0">Gemini Flash 3.0</option>
+            <option value="gemini-flash-3-1-pro">Gemini Flash 3.1 Pro</option>
+          </select>
         </div>
+      </div>
     </div>
+  </nav>
 
-    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-    <script src="/js/app.js"></script>
+  <!-- Main Content Area -->
+  <main class="content-area">
+    <!-- Step 1: Ingestion -->
+    <section id="step-1" class="view active">
+      <!--div class="container"-->
+      <div>
+        <div class="card max-w-screen-xl">
+          <div class="card-header">
+            <h2>Setup Newsletter</h2>
+          </div>
+          <div class="card-body">
+            <!-- Newsletter Name -->
+            <div class="form-group mb-5">
+              <label class="text-sm font-semibold text-gray-500 uppercase tracking-wide block mb-2">Newsletter Name</label>
+              <div class="flex items-center gap-2.5 flex-wrap">
+                <input type="text" id="newsletter-name" placeholder="e.g. Week 1 - Tech Update" value="Week 1" class="max-w-sm">
+                <button type="button" class="btn btn-primary btn-sm" onclick="saveSession()" title="Save current name and articles as a session (no search needed)">Save current</button>
+              </div>
+            </div>
+
+            <hr class="divider">
+
+            <!-- AI Prompt Section -->
+            <div class="form-group">
+              <label class="section-label mb-1">Find Articles with AI</label>
+              <textarea id="ai-prompt" rows="4" placeholder="Enter instructions for AI to generate articles..."></textarea>
+
+              <div id="recent-prompts" class="recent-prompts mt-1 mb-2 text-sm text-gray-400">
+                <!-- Recent prompts will be injected here -->
+              </div>
+
+              <div class="controls-row justify-end gap-2 items-center">
+                <span id="search-status" class="text-success font-medium hidden"></span>
+                <button id="btn-search-articles" class="btn btn-primary">Find Articles</button>
+                <button id="btn-clear-workspace" class="btn btn-secondary bg-gray-500" onclick="clearWorkspace()">Clear All</button>
+                <button id="btn-next-step-2" class="btn btn-outline hidden">Next: Review Articles</button>
+              </div>
+            </div>
+
+            <hr class="divider">
+
+            <!-- File Upload Section -->
+            <div class="form-group">
+              <label class="section-label">Or Upload Excel Sheet</label>
+              <div class="controls-row">
+                <div class="file-input-wrapper">
+                  <label for="excel-upload" class="btn btn-secondary">Choose File</label>
+                  <input type="file" id="excel-upload" accept=".xlsx,.xls" hidden>
+                  <span id="file-name" class="file-name">No file chosen</span>
+                </div>
+                <button id="btn-upload-file" class="btn btn-primary">Upload & Load</button>
+              </div>
+              <div class="mt-2">
+                <button id="btn-load-template" class="btn btn-outline btn-sm">Download Template</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 2: Article View -->
+    <section id="step-2" class="view">
+      <div class="card max-w-screen-xl">
+        <div class="card-header">
+          <div class="flex justify-between items-center">
+            <h2>Review & Select Articles</h2>
+            <div id="article-stats" class="article-stats">
+              <span class="stat-item">Total: 0</span>
+            </div>
+          </div>
+          <p class="text-muted">Review generated articles, assign categories, and select for newsletter.</p>
+        </div>
+
+        <!-- Save / Load Controls -->
+        <div class="px-5 py-4 bg-slate-100 border-b border-gray-300">
+          <div id="state-load-hint" class="hidden mb-2 px-3 py-2 bg-yellow-50 border border-yellow-400 rounded text-sm text-yellow-800">
+            <span id="state-load-hint-text">Loading…</span>
+          </div>
+          <div class="flex gap-4 items-center flex-wrap">
+            <button class="btn btn-primary btn-sm" onclick="saveSession()">Save</button>
+            <div class="flex items-center gap-2">
+              <label class="text-sm font-semibold text-gray-500 whitespace-nowrap">Load Saved:</label>
+              <select id="saved-sessions-dropdown" class="px-2.5 py-1.5 border border-gray-300 rounded text-sm min-w-48">
+                <option value="">-- Select --</option>
+              </select>
+              <button class="btn btn-secondary btn-sm" onclick="loadSession()">Load</button>
+              <button class="btn btn-sm text-red-600 border border-red-600 bg-transparent px-2.5 py-1 text-xs" onclick="deleteSession()">Delete</button>
+            </div>
+            <button class="btn btn-primary btn-sm" type="button" onclick="refreshStateFromServer()" title="Load Week 1 and other saved sessions from Supabase" id="btn-refresh-state">Refresh from server</button>
+            <button class="btn btn-outline btn-sm" type="button" onclick="pushStateToServer()" title="Save current articles and archive to the database">Push to server</button>
+            <button class="btn btn-outline btn-sm" type="button" onclick="getLaterCoolFinds()" title="Bring back all Later Cool finds to the top of the list">Get Later Cool Finds</button>
+          </div>
+        </div>
+
+        <!-- AI Query Box with Toggle -->
+        <div class="px-5 py-4 border-b border-gray-200">
+          <div class="flex items-center gap-4 mb-2">
+            <label class="text-base font-semibold text-gray-800">AI Query</label>
+            <div class="flex gap-1 bg-gray-200 rounded-md p-0.5">
+              <button id="toggle-search-more" class="btn btn-sm toggle-btn active px-3 py-1 text-xs" onclick="setQueryMode('search')">Find More Articles</button>
+              <button id="toggle-modify" class="btn btn-sm toggle-btn px-3 py-1 text-xs" onclick="setQueryMode('modify')">Modify Existing</button>
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <textarea id="step2-query" rows="2" placeholder="Search for more articles to add..." class="flex-1 p-2.5 text-base"></textarea>
+            <button id="btn-step2-query" class="btn btn-primary" onclick="executeStep2Query()">Find Articles</button>
+          </div>
+          <div id="step2-query-status" class="text-sm text-green-500 font-medium mt-1 hidden"></div>
+        </div>
+
+        <!-- Add article + Batch filter + Sort -->
+        <div class="mx-5 my-2 flex items-center gap-3 flex-wrap">
+          <button type="button" class="btn btn-primary btn-sm" onclick="openAddArticleModal()">+ Add article</button>
+          <label class="text-xs text-gray-500">Batch:</label>
+          <select id="batch-filter-select" onchange="setBatchFilter(this.value); renderArticles();" class="px-2 py-1 text-sm">
+            <option value="">All</option>
+          </select>
+          <button type="button" class="btn btn-outline btn-sm" onclick="sortByRanks()" title="Sort by MED, then THC, then CBD, then INV (lowest number first)">Sort</button>
+        </div>
+
+        <!-- Articles Table Header -->
+        <div class="articles-table-header">
+          <div class="col-selected">
+            Select<br>
+            <span class="text-xs cursor-pointer underline" onclick="toggleAllArticles(true)">All</span> /
+            <span class="text-xs cursor-pointer underline" onclick="toggleAllArticles(false)">None</span>
+          </div>
+          <div class="col-article">Article</div>
+          <div class="col-date">Date</div>
+          <div class="col-paywall">Paywall</div>
+          <div class="col-status header-sort" onclick="sortArticles('status')">Status</div>
+          <div class="col-cat header-sort" onclick="sortArticles('MED')">MED</div>
+          <div class="col-cat header-sort" onclick="sortArticles('THC')">THC</div>
+          <div class="col-cat header-sort" onclick="sortArticles('CBD')">CBD</div>
+          <div class="col-cat header-sort" onclick="sortArticles('INV')">INV</div>
+          <div class="col-keyword">Notes</div>
+          <div class="col-actions">Actions</div>
+        </div>
+
+        <div id="articles-list" class="articles-list px-5 py-4">
+          <!-- Rows will be injected here -->
+        </div>
+
+        <div id="article-stats-footer" class="article-stats mt-4 py-2 px-2 border-t border-gray-200"></div>
+
+        <div class="controls-row mt-8 justify-between px-4 pb-4">
+          <button id="btn-back-step-1" class="btn btn-secondary">Back</button>
+          <div class="flex gap-2">
+            <button class="btn btn-success btn-sm" onclick="exportArticlesXls()">Export XLS</button>
+            <button id="btn-next-step-3" class="btn btn-primary">Next: Image View</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="step-3" class="view">
+      <div class="card max-w-screen-xl">
+        <div class="card-header">
+          <div class="flex justify-between items-center">
+            <h2>Select Images</h2>
+            <div id="image-view-stats" class="article-stats">
+              <span class="stat-item">Total: 0</span>
+            </div>
+          </div>
+          <p class="text-muted">Choose an image for each selected article.</p>
+          <div class="mt-2 flex gap-2">
+            <button class="btn btn-primary btn-sm" onclick="publishAllImagesToPurablis()">Publish Selected to purablis</button>
+            <button class="btn btn-success btn-sm" onclick="downloadAllImagesZip()">Download All Images (ZIP)</button>
+          </div>
+        </div>
+
+        <!-- Save / Load Controls (same as Article View) -->
+        <div class="px-5 py-4 bg-slate-100 border-b border-gray-300">
+          <div class="flex gap-4 items-center flex-wrap">
+            <button class="btn btn-primary btn-sm" onclick="saveSession()">Save</button>
+            <div class="flex items-center gap-2">
+              <label class="text-sm font-semibold text-gray-500 whitespace-nowrap">Load Saved:</label>
+              <select id="saved-sessions-dropdown-step3" class="px-2.5 py-1.5 border border-gray-300 rounded text-sm min-w-48">
+                <option value="">-- Select --</option>
+              </select>
+              <button class="btn btn-secondary btn-sm" onclick="loadSessionFromStep3()">Load</button>
+              <button class="btn btn-sm text-red-600 border border-red-600 bg-transparent px-2.5 py-1 text-xs" onclick="deleteSessionFromStep3()">Delete</button>
+            </div>
+            <button class="btn btn-primary btn-sm" type="button" onclick="refreshStateFromServer()" title="Load Week 1 and other saved sessions from Supabase">Refresh from server</button>
+            <button class="btn btn-outline btn-sm" type="button" onclick="pushStateToServer()" title="Save current articles and archive to the database">Push to server</button>
+          </div>
+        </div>
+
+        <div id="images-list" class="images-list p-0">
+        </div>
+
+        <div class="controls-row mt-8 justify-between px-4 pb-4">
+          <button id="btn-back-step-2" class="btn btn-secondary">Back</button>
+          <button id="btn-next-step-4" class="btn btn-primary">Next: Inspirational Images</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="step-4" class="view">
+      <div class="card">
+        <div class="card-header">
+          <h2>Inspirational Images</h2>
+          <p class="text-muted">Select inspirational images for the newsletter headers.</p>
+        </div>
+        <div class="card-body">
+          <div class="form-group">
+            <label>Upload Image</label>
+            <div class="flex gap-2 items-center mt-2">
+              <input type="file" accept="image/*" id="insp-upload-input" class="flex-1 form-control">
+              <button class="btn btn-primary" onclick="uploadInspirationalImage()" id="btn-insp-upload">Upload</button>
+            </div>
+            <div id="insp-upload-status" class="text-xs text-gray-400 mt-1"></div>
+          </div>
+
+          <div class="form-group mt-4">
+            <label>Or Add Image by URL</label>
+            <div class="flex gap-2 mt-2">
+              <input type="text" id="insp-url-input" placeholder="https://example.com/image.jpg" class="flex-1 form-control">
+              <button class="btn btn-secondary" onclick="addInspirationalUrl()">Add URL</button>
+            </div>
+          </div>
+
+          <hr class="divider">
+
+          <h3>Select from Gallery</h3>
+          <div id="insp-gallery-grid" class="image-grid-compact mb-5">
+            <!-- Pre-loaded images injected here -->
+          </div>
+
+          <!--hr class="divider"-->
+
+          <h4>Selected Images</h4>
+          <div id="selected-insp-grid" class="image-grid-compact mb-5">
+            <!-- Selected -->
+          </div>
+        </div>
+        <div class="controls-row mt-8 justify-between px-4 pb-4">
+          <button id="btn-back-step-3" class="btn btn-secondary">Back</button>
+          <button id="btn-next-step-5" class="btn btn-primary">Next: Text Editor</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="step-5" class="view">
+      <div class="card max-w-screen-xl">
+        <div class="card-header">
+          <div class="flex justify-between items-center">
+            <h2>Text Editor</h2>
+            <button class="btn btn-primary btn-sm" onclick="saveSession()">Save</button>
+          </div>
+          <p class="text-muted">Write prompts, import article links, generate summaries with AI.</p>
+        </div>
+        <div class="card-body">
+          <div class="tabs-container mb-5 border-b border-gray-300">
+            <button class="tab-btn active" onclick="switchEditorTab('MED')">MED</button>
+            <button class="tab-btn" onclick="switchEditorTab('THC')">THC</button>
+            <button class="tab-btn" onclick="switchEditorTab('CBD')">CBD</button>
+            <button class="tab-btn" onclick="switchEditorTab('INV')">INV</button>
+          </div>
+
+          <div id="editor-content">
+            <!-- Dynamic Content Injected Here -->
+          </div>
+        </div>
+        <div class="controls-row mt-8 justify-between px-4 pb-4">
+          <button id="btn-back-step-4" class="btn btn-secondary">Back</button>
+          <button id="btn-next-step-6" class="btn btn-primary">Next: Confirmation</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="step-6" class="view">
+      <div class="card">
+        <div class="card-header">
+          <h2>Confirmation</h2>
+          <p class="text-muted">Review and publish your newsletter.</p>
+        </div>
+        <div class="card-body">
+          <div id="confirmation-summary" class="mb-8">
+            <!-- Summary stats -->
+          </div>
+
+          <div class="form-group">
+            <label>Export Actions</label>
+            <div class="flex gap-2 mt-2">
+              <button class="btn btn-success" onclick="exportNewsletter()">Download JSON</button>
+              <button class="btn btn-outline" onclick="window.print()">Print / PDF</button>
+            </div>
+          </div>
+        </div>
+        <div class="controls-row mt-8 justify-between px-4 pb-4">
+          <button id="btn-back-step-5" class="btn btn-secondary">Back</button>
+          <button class="btn btn-primary" onclick="alert('Publishing functionality to be implemented!')">Publish Newsletter</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Add Article Modal -->
+<div id="add-article-modal" onclick="if(event.target===this) window.closeAddArticleModal&&closeAddArticleModal()" class="hidden fixed inset-0 bg-black/40 z-[1000] items-center justify-center flex-col">
+  <div class="bg-white rounded-lg p-5 max-w-sm w-[90%] shadow-xl">
+    <h3 class="m-0 mb-4 text-lg">Add article (at top)</h3>
+    <div class="flex flex-col gap-2.5">
+      <div>
+        <label class="text-xs text-gray-500">Title</label>
+        <input type="text" id="add-article-title" placeholder="Article title" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500">URL</label>
+        <input type="url" id="add-article-url" placeholder="https://..." class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500">Status</label>
+        <select id="add-article-status" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm">
+          <option value="Y">Y</option>
+          <option value="YM">YM</option>
+          <option value="M">M</option>
+          <option value="NO">NO</option>
+          <option value="COOL FINDS">COOL FINDS</option>
+          <option value="LATER COOL">Later Cool</option>
+        </select>
+      </div>
+      <div class="grid grid-cols-4 gap-1.5">
+        <div><label class="text-[0.7rem] text-gray-500">MED</label><input type="text" id="add-article-med" class="w-full p-1 text-sm"></div>
+        <div><label class="text-[0.7rem] text-gray-500">THC</label><input type="text" id="add-article-thc" class="w-full p-1 text-sm"></div>
+        <div><label class="text-[0.7rem] text-gray-500">CBD</label><input type="text" id="add-article-cbd" class="w-full p-1 text-sm"></div>
+        <div><label class="text-[0.7rem] text-gray-500">INV</label><input type="text" id="add-article-inv" class="w-full p-1 text-sm"></div>
+      </div>
+    </div>
+    <div class="mt-5 flex gap-2 justify-end">
+      <button type="button" class="btn btn-secondary btn-sm" onclick="closeAddArticleModal()">Cancel</button>
+      <button type="button" class="btn btn-primary btn-sm" onclick="addArticleFromModal()">Add at top</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="/js/app.js"></script>
 </body>
 </html>

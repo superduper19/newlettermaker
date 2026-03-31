@@ -1,0 +1,19 @@
+root = true
+
+[*]
+indent_style = space
+indent_size = 2
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[*.md]
+max_line_length = 80
+
+[*.{js,jsx}]
+max_line_length = 100
+indent_size = 4
+ij_continuation_indent_size = 4
+ij_javascript_imports_wrap = off
+ij_typescript_imports_wrap = off
