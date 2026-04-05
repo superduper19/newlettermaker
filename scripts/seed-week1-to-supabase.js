@@ -125,7 +125,7 @@ async function seedWeek1() {
   let articles = [...ARTICLES];
 
   // If local upload file exists, optionally upload to Supabase Storage and replace URL
-  const uploadsDir = path.join(__dirname, '../public/uploads');
+  const uploadsDir = path.join(__dirname, '/tmp/uploads');
   const localPath = path.join(uploadsDir, 'upload-1772320410170.jpg');
   if (fs.existsSync(localPath)) {
     try {

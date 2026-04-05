@@ -9,7 +9,7 @@ const FREEPIK_ICONS_URL = 'https://api.freepik.com/v1/icons';
 const API_KEY = process.env.FREEPIK_API_KEY;
 
 // Multer disk storage for local image uploads
-const uploadDir = path.join(__dirname, '../public/uploads');
+const uploadDir = path.join(__dirname, '/tmp/uploads');
 const diskStorage = multer.diskStorage({
     destination: (req, file, cb) => {
         if (!fs.existsSync(uploadDir)) {
@@ -35,7 +35,7 @@ function getRemotePath() {
 router.post('/search', async (req, res) => {
     try {
         const { query, page = 1 } = req.body;
-        
+
         if (!query) {
             return res.status(400).json({ error: 'Search query is required' });
         }
@@ -62,13 +62,13 @@ router.post('/search', async (req, res) => {
         }
 
         const data = await response.json();
-        
+
         // Transform data (Icons structure)
         const images = data.data.map(item => ({
             id: item.id,
             title: item.name || 'Icon',
             // Icons have 'thumbnails' array. Usually index 0 is best for preview.
-            preview: item.thumbnails && item.thumbnails[0] ? item.thumbnails[0].url : '', 
+            preview: item.thumbnails && item.thumbnails[0] ? item.thumbnails[0].url : '',
             download: item.thumbnails && item.thumbnails[0] ? item.thumbnails[0].url : ''
         }));
 
@@ -178,7 +178,7 @@ router.post('/publish-to-purablis', async (req, res) => {
         const uploadsMatch = url.match(/\/uploads\/([^?#]+)/);
         if (url.startsWith('/uploads/') || uploadsMatch) {
             filename = uploadsMatch ? uploadsMatch[1] : url.replace('/uploads/', '');
-            localPath = path.join(__dirname, '../public/uploads', filename);
+            localPath = path.join(__dirname, '/tmp/uploads', filename);
             if (!fs.existsSync(localPath)) {
                 return res.status(404).json({ error: 'Local file not found', path: localPath });
             }
