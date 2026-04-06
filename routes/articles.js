@@ -71,10 +71,10 @@ const verifyAndAnalyzeUrl = async (url) => {
     try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
-        
-        const response = await fetch(url, { 
+
+        const response = await fetch(url, {
             method: 'GET',
-            headers: { 
+            headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
                 'Accept-Language': 'en-US,en;q=0.9'
@@ -83,19 +83,19 @@ const verifyAndAnalyzeUrl = async (url) => {
         });
         clearTimeout(timeout);
 
-        // 404/410 are definitely dead. 
+        // 404/410 are definitely dead.
         if (response.status === 404 || response.status === 410) {
             console.log(`URL ${url} returned ${response.status}. Invalid.`);
             return { isValid: false, content: '' };
         }
 
-        // 403/401/429/5xx might be valid URLs blocking bots. 
+        // 403/401/429/5xx might be valid URLs blocking bots.
         // We'll mark them valid but content-less so we don't discard real news.
         if (!response.ok) {
             console.log(`URL ${url} returned ${response.status}. Treating as valid but unreadable.`);
             return { isValid: true, isReadable: false, content: '' };
         }
-        
+
         const text = await response.text();
         // Simple extraction of body text (stripping tags)
         const content = text.replace(/<script[^>]*>([\S\s]*?)<\/script>/gmi, '')
@@ -172,7 +172,7 @@ const categorizeArticle = (article, content) => {
     // Exclude: Local ordinances, small busts, intl busts, anti-cannabis.
     const thcKeywords = ['marijuana', 'cannabis', 'legalization', 'legalize', 'dispensary', 'adult-use', 'recreational', 'potency', 'strain', 'rescheduling', 'descheduling', 'safer banking'];
     const thcMatch = thcKeywords.filter(k => fullText.includes(k)).length;
-    
+
     const psychKeywords = ['psychedelic', 'psilocybin', 'magic mushroom', 'mdma', 'ketamine'];
     const psychMatch = psychKeywords.filter(k => fullText.includes(k)).length;
 
@@ -188,7 +188,7 @@ const categorizeArticle = (article, content) => {
     // Exclude: Ads, generic "CBD helps X", pure PR.
     const cbdKeywords = ['hemp', 'cbd', 'cannabidiol', 'delta-8', 'delta-10', 'thca', 'cbg', 'cbn', 'farm bill', 'usda hemp'];
     const cbdMatch = cbdKeywords.filter(k => fullText.includes(k)).length;
-    
+
     if (cbdMatch >= 1) {
         // Edge Case: CBD from marijuana = THC or Med, NOT CBD.
         // If "marijuana" is dominant, it might not be CBD newsletter.
@@ -197,7 +197,7 @@ const categorizeArticle = (article, content) => {
             addCat('CBD', 'Y');
         } else if (fullText.includes('marijuana') && !fullText.includes('hemp')) {
              // Likely THC/Med
-             addCat('THC', 'YM'); 
+             addCat('THC', 'YM');
         } else {
             addCat('CBD', cbdMatch >= 2 ? 'Y' : 'YM');
         }
@@ -208,7 +208,7 @@ const categorizeArticle = (article, content) => {
     // Exclude: Small PR, local revenue.
     const invKeywords = ['merger', 'acquisition', 'stock', 'invest', 'revenue', 'profit', 'earnings', 'capital', 'funding', 'raise', 'ipo', 'nasdaq', 'nyse', 'tsx', 'cse', 'mso', 'multi-state operator'];
     const invMatch = invKeywords.filter(k => fullText.includes(k)).length;
-    
+
     // International news goes here
     const intlKeywords = ['germany', 'canada', 'europe', 'australia', 'colombia', 'thailand', 'international'];
     const intlMatch = intlKeywords.filter(k => fullText.includes(k)).length;
@@ -286,9 +286,60 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
 // Helper to extract JSON from AI response
 const extractJSON = (text) => {
+    // Strip common wrappers from provider errors before parsing
+    text = String(text || '').replace(/^Error:\s*/i, '').trim();
+
     // Remove markdown code blocks if present
     text = text.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
-    
+
+    // Extract and parse complete JSON objects from text, ignoring truncated tails.
+    const extractObjectsFromText = (source) => {
+        const objects = [];
+        let start = -1;
+        let depth = 0;
+        let inString = false;
+        let escaped = false;
+
+        for (let i = 0; i < source.length; i++) {
+            const ch = source[i];
+
+            if (inString) {
+                if (escaped) {
+                    escaped = false;
+                } else if (ch === '\\') {
+                    escaped = true;
+                } else if (ch === '"') {
+                    inString = false;
+                }
+                continue;
+            }
+
+            if (ch === '"') {
+                inString = true;
+                continue;
+            }
+
+            if (ch === '{') {
+                if (depth === 0) start = i;
+                depth++;
+                continue;
+            }
+
+            if (ch === '}') {
+                if (depth > 0) depth--;
+                if (depth === 0 && start >= 0) {
+                    const candidate = source.slice(start, i + 1);
+                    try {
+                        objects.push(JSON.parse(candidate));
+                    } catch (e) { /* skip invalid object */ }
+                    start = -1;
+                }
+            }
+        }
+
+        return objects;
+    };
+
     // 1. Direct parse
     try {
         return JSON.parse(text);
@@ -302,12 +353,15 @@ const extractJSON = (text) => {
         try { return JSON.parse(match[0] + '}]'); } catch (e4) { /* continue */ }
 
         // 3. Extract individual JSON objects from within the array
-        const objects = [];
-        const objRegex = /\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g;
-        let m;
-        while ((m = objRegex.exec(match[0])) !== null) {
-            try { objects.push(JSON.parse(m[0])); } catch (e5) { /* skip */ }
-        }
+        const objects = extractObjectsFromText(match[0]);
+        if (objects.length > 0) return objects;
+    }
+
+    // 3b. Handle truncated arrays with no closing bracket.
+    const firstArrayBracket = text.indexOf('[');
+    if (firstArrayBracket !== -1) {
+        const arrayTail = text.slice(firstArrayBracket);
+        const objects = extractObjectsFromText(arrayTail);
         if (objects.length > 0) return objects;
     }
 
@@ -353,7 +407,7 @@ const getApiModelId = (userModel) => MODEL_MAPPING[userModel] || userModel || 'c
 // Helper to extract clean error message from AI providers
 function parseAIError(error) {
     let message = error.message || 'Unknown error occurred';
-    
+
     // Check if message looks like an HTTP error with JSON body (common with Anthropic SDK)
     // e.g. "400 {"type":"error","error":{"type":"invalid_request_error","message":"..."}}"
     if (/^\d{3}\s+\{/.test(message)) {
@@ -367,7 +421,7 @@ function parseAIError(error) {
              // Parsing failed, return original
          }
     }
-    
+
     // Check for nested error object
     if (error.error && error.error.message) {
         return error.error.message;
@@ -381,7 +435,7 @@ router.post('/search', async (req, res) => {
     try {
         const { prompt, newsletterName, model } = req.body;
         console.log(`Received search request: "${prompt}" for ${newsletterName} using model ${model}`);
-        
+
         // Use mock data if requested (for testing without burning credits)
         if (prompt.toLowerCase().includes('mock data')) {
              console.log("Mock data requested.");
@@ -397,7 +451,7 @@ router.post('/search', async (req, res) => {
         console.log(`Searching articles with model ${model} for "${newsletterName}"`);
 
         const apiModel = getApiModelId(model);
-        
+
         console.log(`Using model mapping: ${model} -> ${apiModel}`);
 
         let content = '';
@@ -415,8 +469,8 @@ Example format:
 
         if (apiModel.toLowerCase().includes('gemini')) {
             try {
-                const geminiModel = genAI.getGenerativeModel({ 
-                    model: apiModel, 
+                const geminiModel = genAI.getGenerativeModel({
+                    model: apiModel,
                     tools: [{ googleSearch: {} }]
                 });
 
@@ -436,7 +490,7 @@ Example format:
                 max_tokens: 8000,
                 system: systemPrompt,
                 messages: [
-                    { role: "user", content: prompt } 
+                    { role: "user", content: prompt }
                 ],
                 tools: [
                     {
@@ -467,7 +521,7 @@ Example format:
             } catch (fsErr) {
                 console.error("Failed to write error log file", fsErr);
             }
-            
+
             return res.status(500).json({
                 error: "AI needs more detail before it can continue.",
                 details: String(content || '').trim(),
@@ -480,15 +534,15 @@ Example format:
         // Stage 2: Verification & Categorization
         const processArticle = async (article) => {
             // Clean first
-            let cleaned = cleanArticleData(article, 0); 
-            
+            let cleaned = cleanArticleData(article, 0);
+
             // 1. Verify URL
             if (!cleaned.url || cleaned.url.includes('example.com') || cleaned.url === '#') {
-                return null; 
+                return null;
             }
 
             const { isValid, isReadable, content } = await verifyAndAnalyzeUrl(cleaned.url);
-            
+
             if (!isValid) {
                 console.log(`Skipping invalid URL (failed verification): ${cleaned.url}`);
                 return null;
@@ -504,7 +558,7 @@ Example format:
             if (isReadable) {
                 // categorizeArticle now implements the brief's logic
                 cleaned = categorizeArticle(cleaned, content);
-                
+
                 if (!cleaned) {
                     console.log(`Skipping rejected article (rule violation): ${article.url}`);
                     return null;
@@ -518,7 +572,7 @@ Example format:
         };
 
         const results = await Promise.all(rawArticles.map(a => processArticle(a)));
-        
+
         // Filter out nulls (rejected articles)
         const validArticles = results.filter(a => a !== null);
 
@@ -613,7 +667,7 @@ router.post('/modify', async (req, res) => {
 router.post('/summarize', async (req, res) => {
     try {
         const { prompt, useRules, summaryRules, category, model, articles } = req.body;
-        
+
         if (!prompt) {
             return res.status(400).json({ error: 'Prompt is required' });
         }
