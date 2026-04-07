@@ -61,14 +61,22 @@ async function main() {
         ? { ...sessionsRow.value }
         : {};
 
-    const defaultContent = { MED: { intro: '', outro: '' }, THC: { intro: '', outro: '' }, CBD: { intro: '', outro: '' }, INV: { intro: '', outro: '' } };
+    const defaultContent = {
+        MED: { intro: '', outro: '' },
+        THC: { intro: '', outro: '' },
+        CBD: { intro: '', outro: '' },
+        INV: { intro: '', outro: '' },
+    };
     const nc = workspace.newsletterContent || defaultContent;
 
     sessions[sessionName] = {
         articles: JSON.parse(JSON.stringify(articles)),
         archivedArticles: workspace.archivedArticles || [],
         inspirationalImages: workspace.inspirationalImages || [],
-        newsletterContent: { ...nc, templates: (nc.templates || { MED: '', THC: '', CBD: '', INV: '' }) },
+        newsletterContent: {
+            ...nc,
+            templates: (nc.templates || { MED: '', THC: '', CBD: '', INV: '' }),
+        },
         savedAt: new Date().toISOString(),
     };
 

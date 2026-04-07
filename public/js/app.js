@@ -104,8 +104,8 @@ const DEFAULT_SUMMARY_RULES = [
     '6.  If a paywall prevents access, explicitly state that the article is',
     '    paywalled.',
     '7.  If partial access is available, only summarize the visible content.',
-    '8. Dont use em dashes',
-    '9. Final product should be a paragraph',
+    '8.  Dont use em dashes',
+    '9.  Final product should be a paragraph',
     '10. Each article should be summarized by one sentence.',
     '12. Do not use past participles',
     '13. make it casual',
@@ -113,6 +113,7 @@ const DEFAULT_SUMMARY_RULES = [
     '15. Dont include the names of the periodicals or the studies',
     '16. Keep sentences succinct but give important data if applicable.',
 ].join('\n');
+
 function normalizeSummaryRules(value) {
     const text = String(value || '').trim();
     if (!text) return DEFAULT_SUMMARY_RULES;
@@ -127,6 +128,7 @@ function normalizeSummaryRules(value) {
     }
     return value;
 }
+
 const LEGACY_DEFAULT_SUBJECT_PROMPT = "From the top 3 articles for each 4 category, Create a small Clicky subject by suitable Emojis. Keep Emojis first then subjects with space and don't use \"|\" in between. Same articles should have same Subjects.";
 const DEFAULT_SUBJECT_PROMPT = "From the top 3 articles for each 4 category, Create a small Clicky subject by suitable Emojis. Keep Emojis first then subjects with space and don't use \"|\" in between. Same articles should have same Subjects.";
 
@@ -229,7 +231,12 @@ function applyWorkspaceState(state, { mergeLibrary = false } = {}) {
     } else if (!mergeLibrary) {
         inspirationalLibraryImages = [];
     }
-    const nc = value.newsletterContent || { MED: { intro: '', outro: '' }, THC: { intro: '', outro: '' }, CBD: { intro: '', outro: '' }, INV: { intro: '', outro: '' } };
+    const nc = value.newsletterContent || {
+        MED: { intro: '', outro: '' },
+        THC: { intro: '', outro: '' },
+        CBD: { intro: '', outro: '' },
+        INV: { intro: '', outro: '' },
+    };
     newsletterContent = {
         ...nc,
         templates: nc.templates || { MED: '', THC: '', CBD: '', INV: '' },
@@ -264,7 +271,9 @@ async function convertLocalUploadUrlsForSharing() {
     const urls = new Set();
     const addUrl = (value) => {
         const str = String(value || '').trim();
-        if (!str) return;
+        if (!str) {
+            return;
+        }
         if (str.startsWith('/uploads/') || /\/uploads\/[^?#]+/i.test(str)) {
             urls.add(str);
         }
@@ -279,12 +288,14 @@ async function convertLocalUploadUrlsForSharing() {
     inspirationalImages.forEach(addUrl);
     inspirationalLibraryImages.forEach((item) => addUrl(item && item.url));
 
-    if (urls.size === 0) return;
+    if (urls.size === 0) {
+        return;
+    }
 
     const res = await fetch('/api/images/inline-local', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ urls: Array.from(urls) })
+        body: JSON.stringify({ urls: Array.from(urls) }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.success) {
@@ -304,7 +315,10 @@ async function convertLocalUploadUrlsForSharing() {
         uploadedImageUrl: mapUrl(article.uploadedImageUrl),
     }));
     inspirationalImages = inspirationalImages.map(mapUrl);
-    inspirationalLibraryImages = inspirationalLibraryImages.map((item) => item && item.url ? { ...item, url: mapUrl(item.url) } : item);
+    inspirationalLibraryImages = inspirationalLibraryImages.map((item) => item && item.url ? {
+        ...item,
+        url: mapUrl(item.url),
+    } : item);
 }
 
 async function parseJsonResponse(res, fallbackMessage) {
@@ -322,11 +336,15 @@ async function parseJsonResponse(res, fallbackMessage) {
 
 async function getAiClarificationFromError(data) {
     const directDetails = String(data?.details || '').trim();
-    if (directDetails) return directDetails;
+    if (directDetails) {
+        return directDetails;
+    }
 
     const errorText = String(data?.error || '').trim();
     const logMatch = errorText.match(/Log ID:\s*(\d+)/i);
-    if (!logMatch) return '';
+    if (!logMatch) {
+        return '';
+    }
 
     try {
         const res = await fetch(`/api/articles/error-log/${logMatch[1]}`);
@@ -341,6 +359,35 @@ async function getAiClarificationFromError(data) {
     return '';
 }
 
+const MANAGED_DISPLAY_DATA_KEY = 'managedDisplayClass';
+
+function showWithClass(el, displayClass = 'block') {
+    if (!el) return;
+
+    const previousDisplayClass = el.dataset[MANAGED_DISPLAY_DATA_KEY];
+    if (previousDisplayClass && previousDisplayClass !== displayClass) {
+        el.classList.remove(previousDisplayClass);
+    }
+
+    el.classList.remove('hidden');
+
+    if (displayClass) {
+        el.classList.add(displayClass);
+        el.dataset[MANAGED_DISPLAY_DATA_KEY] = displayClass;
+    }
+}
+
+function hideWithClass(el) {
+    if (!el) return;
+
+    const previousDisplayClass = el.dataset[MANAGED_DISPLAY_DATA_KEY];
+    if (previousDisplayClass) {
+        el.classList.remove(previousDisplayClass);
+    }
+
+    el.classList.add('hidden');
+}
+
 // Load from Supabase (DB) — overwrites if server has data
 window.updateStateHintFromDiagnostic = async function () {
     const hintEl = document.getElementById('state-load-hint');
@@ -350,10 +397,10 @@ window.updateStateHintFromDiagnostic = async function () {
         const res = await fetch('/api/state/diagnostic');
         const d = await res.json().catch(() => ({}));
         if (d.configured && d.sessionsCount && !d.dbError) {
-            hintEl.style.display = 'none';
+            hideWithClass(hintEl);
             return;
         }
-        hintEl.style.display = 'block';
+        showWithClass(hintEl, 'block');
         if (!res.ok) {
             textEl.textContent = 'Cannot reach server. Check deployment and try Refresh from server.';
             return;
@@ -376,7 +423,7 @@ window.updateStateHintFromDiagnostic = async function () {
         }
         textEl.textContent = 'No sessions in database yet. Click Refresh from server after saving Week 1 from the app or running the upload script.';
     } catch (e) {
-        hintEl.style.display = 'block';
+        showWithClass(hintEl, 'block');
         textEl.textContent = 'Cannot reach /api/state. Is the server running? On Vercel, ensure the app is deployed with the Express server (see docs).';
     }
 };
@@ -385,11 +432,11 @@ window.updateStateHintFromDiagnostic = async function () {
     try {
         const [wrRes, sessRes] = await Promise.all([
             fetch('/api/state?key=workspace'),
-            fetch('/api/state?key=sessions')
+            fetch('/api/state?key=sessions'),
         ]);
         const hintEl = document.getElementById('state-load-hint');
         if (sessRes.status === 503 || wrRes.status === 503) {
-            if (hintEl) hintEl.style.display = 'block';
+            if (hintEl) showWithClass(hintEl, 'block');
             await window.updateStateHintFromDiagnostic();
         }
         if (wrRes.ok) {
@@ -404,26 +451,29 @@ window.updateStateHintFromDiagnostic = async function () {
             if (value && typeof value === 'object') {
                 const local = JSON.parse(localStorage.getItem('newsletter_saved_sessions') || '{}');
                 const merged = { ...value };
-                Object.keys(local).forEach(k => { if (!(k in merged)) merged[k] = local[k]; });
+                Object.keys(local).forEach(k => {
+                    if (!(k in merged)) merged[k] = local[k];
+                });
                 localStorage.setItem('newsletter_saved_sessions', JSON.stringify(merged));
                 if (typeof populateSavedDropdown === 'function') populateSavedDropdown();
-                if (hintEl) hintEl.style.display = 'none';
+                if (hintEl) hideWithClass(hintEl);
                 const nameEl = document.getElementById('newsletter-name');
                 if (nameEl && nameEl.value.trim()) {
                     currentSessionName = nameEl.value.trim();
                 }
             }
-        } else if (hintEl && hintEl.style.display !== 'none') {
+        } else if (hintEl && !hintEl.classList.contains('hidden')) {
             await window.updateStateHintFromDiagnostic();
         }
     } catch (e) {
         const hintEl = document.getElementById('state-load-hint');
-        if (hintEl) hintEl.style.display = 'block';
+        if (hintEl) showWithClass(hintEl, 'block');
         await window.updateStateHintFromDiagnostic();
     }
 })();
 
 let workspaceSyncTimeout = null;
+
 function saveState() {
     const state = buildWorkspaceState();
     persistWorkspaceLocal(state);
@@ -434,7 +484,8 @@ function saveState() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ key: 'workspace', value: state }),
-        }).catch(() => {});
+        }).catch(() => {
+        });
     }, 800);
 }
 
@@ -460,29 +511,31 @@ const steps = document.querySelectorAll('.nav-steps .step');
 const views = document.querySelectorAll('.view');
 
 function switchStep(stepNumber) {
+    const step = Number(stepNumber);
+
     // Update Navigation UI
     steps.forEach(s => s.classList.remove('active'));
-    const activeStep = document.querySelector(`.step[data-step="${stepNumber}"]`);
+    const activeStep = document.querySelector(`.step[data-step="${step}"]`);
     if (activeStep) activeStep.classList.add('active');
 
     // Show Corresponding View
     views.forEach(v => v.classList.remove('active'));
-    const targetView = document.getElementById(`step-${stepNumber}`);
+    const targetView = document.getElementById(`step-${step}`);
     if (targetView) targetView.classList.add('active');
 
     // Logic for specific steps
-    if (stepNumber === 2) {
+    if (step === 2) {
         populateSavedDropdown();
         renderArticles();
-    } else if (stepNumber === 3) {
+    } else if (step === 3) {
         populateSavedDropdown();
         renderImagesView();
-    } else if (stepNumber === 4) {
+    } else if (step === 4) {
         renderInspirationalView();
         loadInspirationalLibrary();
-    } else if (stepNumber === 5) {
+    } else if (step === 5) {
         renderEditorView();
-    } else if (stepNumber === 6) {
+    } else if (step === 6) {
         renderConfirmationView();
     }
 
@@ -542,7 +595,7 @@ window.renderImagesView = () => {
     }
 
     if (relevantArticles.length === 0) {
-        list.innerHTML = '<div style="padding: 30px; text-align: center; color: #777;">No selected articles are ready for Image View yet. Check the articles you want in Article View and assign categories first.</div>';
+        list.innerHTML = '<div class="p-7.5 text-center text-[#777]">No selected articles are ready for Image View yet. Check the articles you want in Article View and assign categories first.</div>';
         return;
     }
 
@@ -579,7 +632,7 @@ window.renderImagesView = () => {
 
         const selectedImageHtml = article.image
             ? `<div class="selected-image-container">
-                    <img src="${article.image}" class="img-fluid" style="max-height: 120px;" onerror="this.onerror=null;this.src='${article.originalImageUrl || ''}';this.parentElement.classList.add('img-fallback');">
+                    <img src="${article.image}" class="img-fluid max-h-30" onerror="this.onerror=null;this.src='${article.originalImageUrl || ''}';this.parentElement.classList.add('img-fallback');">
                     <button class="btn-remove-image" onclick="removeImage(${originalIndex})">×</button>
                     ${article.image.includes('purablis.com') ? '<span class="badge-published" title="Published">P</span>' : ''}
                 </div>`
@@ -590,9 +643,11 @@ window.renderImagesView = () => {
         const catInputs = ['MED', 'THC', 'CBD', 'INV'].map(cat => {
             let rank = (article.ranks && article.ranks[cat]) || '';
             return `<div class="img-col-cat">
-                <input type="text" value="${rank}"
+                <input
+                    type="text"
+                    value="${rank}"
                     oninput="updateCategoryRank(${originalIndex}, '${cat}', this.value)"
-                    style="width: 100%; text-align: center; padding: 4px 1px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.8rem; box-sizing: border-box;">
+                    class="w-full text-center h-8 py-1 px-px border border-[#ddd] rounded text-[0.8rem] font-semibold box-border">
             </div>`;
         }).join('');
 
@@ -600,29 +655,30 @@ window.renderImagesView = () => {
 
         const rowHtml = `
             <div class="img-table-row">
-                <div class="img-col-select" style="display:flex;align-items:center;justify-content:center;padding-top:8px;">
+                <div class="img-col-select flex items-center justify-center pt-2">
                     <input type="checkbox" ${article.publishImage ? 'checked' : ''} onchange="updateArticleField(${originalIndex}, 'publishImage', this.checked)">
                 </div>
                 <div class="img-col-article">
-                    <textarea class="title-edit" rows="2"
+                    <textarea
+                        rows="2"
                         onchange="updateArticleField(${originalIndex}, 'title', this.value)"
-                        style="font-family: inherit; font-size: 0.9rem;"
-                    >${article.title}</textarea>
+                        class="title-edit font-[inherit] text-[0.9rem]">${article.title}</textarea>
                     <a href="${article.url}" target="_blank" class="article-link-sm">${article.url}</a>
                 </div>
                 ${catInputs}
                 <div class="img-col-search">
-                    <div style="display: flex; gap: 5px; margin-bottom: 8px;">
-                        <input type="text" class="form-control"
+                    <div class="flex gap-1.25 mb-2">
+                        <input
+                            type="text"
                             id="img-search-input-${originalIndex}"
                             value="${article.imageSearchQuery}"
                             placeholder="Keyword..."
-                            style="padding: 5px 8px; font-size: 0.85rem;">
-                        <button class="btn btn-sm btn-primary" onclick="searchArticleImages(${originalIndex})" style="white-space: nowrap;">Search</button>
+                            class="form-control h-8 py-1 px-px text-[0.85rem]">
+                        <button class="btn btn-sm btn-primary whitespace-nowrap" onclick="searchArticleImages(${originalIndex})">Search</button>
                     </div>
-                    <div style="border-top: 1px solid #eee; padding-top: 6px;">
-                        <input type="file" accept="image/*" id="img-upload-input-${originalIndex}" style="display: none;" onchange="uploadArticleImage(${originalIndex}, this)">
-                        <label for="img-upload-input-${originalIndex}" class="btn btn-sm btn-secondary" style="cursor: pointer; margin: 0; font-size: 0.78rem; padding: 4px 10px;">Upload File</label>
+                    <div class="border-t border-[#eee] pt-1.5">
+                        <input type="file" accept="image/*" id="img-upload-input-${originalIndex}" class="hidden" onchange="uploadArticleImage(${originalIndex}, this)">
+                        <label for="img-upload-input-${originalIndex}" class="btn btn-sm btn-secondary cursor-pointer m-0 text-[0.78rem] py-1 px-2.5">Upload File</label>
                     </div>
                 </div>
                 <div class="img-col-selected" id="selected-img-${originalIndex}">
@@ -630,12 +686,12 @@ window.renderImagesView = () => {
                 </div>
                 <div class="img-col-results">
                     <div id="${gridId}" class="mini-grid">
-                        <span class="text-muted" style="font-size: 0.8rem;">Click Search</span>
+                        <span class="text-muted text-[0.8rem]">Click Search</span>
                     </div>
                 </div>
                 <div class="img-col-actions">
-                    <button class="btn btn-sm btn-outline" style="color: #f57c00; border-color: #f57c00; margin-bottom: 5px; width: 100%;" onclick="archiveArticle(${originalIndex})">Archive</button>
-                    <button class="btn btn-sm btn-outline" style="color: #d32f2f; border-color: #d32f2f; width: 100%;" onclick="removeArticle(${originalIndex})">Remove</button>
+                    <button class="btn btn-sm btn-outline text-[#f57c00] border-[#f57c00] mb-2 w-full" onclick="archiveArticle(${originalIndex})">Archive</button>
+                    <button class="btn btn-sm btn-outline text-[#d32f2f] border-[#d32f2f] w-full" onclick="removeArticle(${originalIndex})">Remove</button>
                 </div>
             </div>
         `;
@@ -655,22 +711,22 @@ function updateImageViewStats() {
         if (a.publishImage !== false) selectedCount++;
     });
     const sessionLabel = currentSessionName
-        ? `<span class="stat-item" style="background:#e8eaf6; color:#283593; font-weight:600;">${currentSessionName}</span>`
+        ? `<span class="stat-item bg-[#e8eaf6] text-[#283593] font-semibold">${currentSessionName}</span>`
         : '';
 
     const count = relevantArticles.length;
-    const countStyle = count === 25
-        ? 'background:#e8f5e9; color:#1b5e20; font-weight: bold; border: 2px solid #4caf50;'
-        : 'background:#ffebee; color:#c62828; font-weight: bold; border: 2px solid #e57373;';
+    const countClass = count === 25
+        ? 'bg-[#e8f5e9] text-[#1b5e20] font-bold border-2 border-[#4caf50]'
+        : 'bg-[#ffebee] text-[#c62828] font-bold border-2 border-[#e57373]';
 
     statsEl.innerHTML = `
         ${sessionLabel}
-        <span class="stat-item" style="${countStyle}" title="Target is 25 articles">Total: ${count} / 25</span>
-        <span class="stat-item" style="background:#e0f7fa; color:#006064;" title="Articles currently selected for Image View">Selected: ${selectedCount}</span>
-        <span class="stat-item" style="background:#e3f2fd; color:#0d47a1;">MED: ${counts.MED}</span>
-        <span class="stat-item" style="background:#e8f5e9; color:#1b5e20;">THC: ${counts.THC}</span>
-        <span class="stat-item" style="background:#fff3e0; color:#e65100;">CBD: ${counts.CBD}</span>
-        <span class="stat-item" style="background:#f3e5f5; color:#4a148c;">INV: ${counts.INV}</span>
+        <span class="stat-item ${countClass}" title="Target is 25 articles">Total: ${count} / 25</span>
+        <span class="stat-item bg-[#e0f7fa] text-[#006064]" title="Articles currently selected for Image View">Selected: ${selectedCount}</span>
+        <span class="stat-item bg-[#e3f2fd] text-[#0d47a1]">MED: ${counts.MED}</span>
+        <span class="stat-item bg-[#e8f5e9] text-[#1b5e20]">THC: ${counts.THC}</span>
+        <span class="stat-item bg-[#fff3e0] text-[#e65100]">CBD: ${counts.CBD}</span>
+        <span class="stat-item bg-[#f3e5f5] text-[#4a148c]">INV: ${counts.INV}</span>
     `;
 }
 
@@ -694,7 +750,7 @@ window.searchArticleImages = async (index) => {
         const res = await fetch('/api/images/search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query, page })
+            body: JSON.stringify({ query, page }),
         });
         const data = await res.json();
 
@@ -715,7 +771,7 @@ window.searchArticleImages = async (index) => {
             const currentPage = article.imagePage || 1;
             navDiv.innerHTML = `
                 <button class="btn btn-sm btn-outline" ${currentPage <= 1 ? 'disabled' : ''} onclick="changeImagePage(${index}, -1)" title="Previous">&larr;</button>
-                <span style="font-size:0.8rem; color:#555;">Page ${currentPage}</span>
+                <span class="text-[0.8rem] text-[#555]">Page ${currentPage}</span>
                 <button class="btn btn-sm btn-outline" onclick="changeImagePage(${index}, 1)" title="Next">&rarr;</button>
             `;
             grid.appendChild(navDiv);
@@ -788,7 +844,7 @@ window.selectImage = (index, url) => {
     if (box) {
         box.innerHTML = `
             <div class="selected-image-container">
-                    <img src="${url}" class="img-fluid" style="max-height: 150px;" onerror="this.onerror=null;this.src='${articles[index].originalImageUrl || ''}';this.parentElement.classList.add('img-fallback');">
+                    <img src="${url}" class="img-fluid max-h-37.5" onerror="this.onerror=null;this.src='${articles[index].originalImageUrl || ''}';this.parentElement.classList.add('img-fallback');">
                     <button class="btn-remove-image" onclick="removeImage(${index})">×</button>
             </div>`;
     }
@@ -830,7 +886,7 @@ window.uploadArticleImage = async (index, input) => {
     try {
         const res = await fetch('/api/images/upload-article', {
             method: 'POST',
-            body: formData
+            body: formData,
         });
         const data = await res.json();
         if (data.success) {
@@ -842,8 +898,7 @@ window.uploadArticleImage = async (index, input) => {
                 articles[index].publishedImageUrl = data.url;
                 saveState();
                 if (label) label.textContent = 'Uploaded (purablis)';
-            }
-            else if (data.ftpError && label) label.textContent = 'Local only';
+            } else if (data.ftpError && label) label.textContent = 'Local only';
         } else {
             alert('Upload failed: ' + (data.error || 'Unknown error'));
         }
@@ -1205,7 +1260,10 @@ function mergePromptWithCategoryLinks(existingPrompt, category) {
 }
 
 window.syncCategoryPrompt = (category) => {
-    const content = newsletterContent[category] || (newsletterContent[category] = { intro: '', outro: '' });
+    const content = newsletterContent[category] || (newsletterContent[category] = {
+        intro: '',
+        outro: '',
+    });
     const mergedPrompt = mergePromptWithCategoryLinks('', category);
     content.prompt = mergedPrompt;
 
@@ -1258,47 +1316,47 @@ window.renderEditorContent = () => {
     const selectedSummaryHtml = ['MED', 'THC', 'CBD', 'INV'].map(cat => {
         const selectedText = selectedResults[cat] || '';
         return `
-            <div style="padding: 12px; border: 1px solid #e0e0e0; border-radius: 8px; background: #fafafa;">
-                <div style="font-weight: 700; margin-bottom: 8px;">${cat}</div>
-                <textarea rows="5" class="form-control" style="font-size: 0.85rem; background: #fff;" oninput="updateSelectedCategoryResult('${cat}', this.value)" placeholder="No selected ${cat} content yet...">${selectedText}</textarea>
+            <div class="p-3 border border-[#e0e0e0] rounded-lg bg-[#fafafa]">
+                <div class="font-bold">${cat}</div>
+                <textarea rows="5" class="form-control text-[0.85rem] bg-white mt-2 p-2" oninput="updateSelectedCategoryResult('${cat}', this.value)" placeholder="No selected ${cat} content yet...">${selectedText}</textarea>
             </div>
         `;
     }).join('');
 
     container.innerHTML = `
-        <div class="form-group" style="padding: 12px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef; margin-bottom: 20px;">
-            <label style="font-weight: 600;">Template for ${currentEditorTab}</label>
-            <p class="text-muted" style="font-size: 0.8rem; margin-bottom: 10px;">HTML template for this newsletter. Use {{SUMMARY}}, {{ARTICLES_HTML}}, {{INSPIRATIONAL_IMAGE}}, {{NEWSLETTER_NAME}} as placeholders.</p>
-            <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 10px;">
-                <input type="file" id="template-single-input" accept=".html,.htm" style="font-size: 0.85rem;">
+        <div class="form-group p-3 bg-[#f8f9fa] rounded-lg border border-[#e9ecef] mb-5">
+            <label class="font-semibold">Template for ${currentEditorTab}</label>
+            <p class="text-muted text-[0.8rem] mb-2.5">HTML template for this newsletter. Use {{SUMMARY}}, {{ARTICLES_HTML}}, {{INSPIRATIONAL_IMAGE}}, {{NEWSLETTER_NAME}} as placeholders.</p>
+            <div class="flex flex-wrap gap-3 items-center mb-2.5">
+                <input type="file" id="template-single-input" accept=".html,.htm" class="upload-input text-[0.85rem]">
                 <button class="btn btn-secondary btn-sm" onclick="uploadSingleTemplate()">Upload 1 (for ${currentEditorTab})</button>
-                <span style="color: #999;">or</span>
-                <input type="file" id="template-batch-input" accept=".html,.htm" multiple style="font-size: 0.85rem;">
+                <span class="text-[#999]">or</span>
+                <input type="file" id="template-batch-input" accept=".html,.htm" multiple class="upload-input text-[0.85rem]">
                 <button class="btn btn-secondary btn-sm" onclick="uploadAllTemplates()">Upload all 4</button>
             </div>
-            <div id="template-status" style="font-size: 0.8rem; color: #666; margin-bottom: 8px;"></div>
-            <textarea id="editor-template" rows="6" class="form-control" style="font-family: monospace; font-size: 0.8rem; background: #fff;" oninput="updateTemplate('${currentEditorTab}', this.value)" placeholder="Paste or edit HTML template here..."></textarea>
+            <div id="template-status" class="text-[0.8rem] text-[#666] mb-2"></div>
+            <textarea id="editor-template" rows="6" class="form-control font-[monospace] text-[0.8rem] bg-white p-2" oninput="updateTemplate('${currentEditorTab}', this.value)" placeholder="Paste or edit HTML template here..."></textarea>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 300px; gap: 20px; align-items: start;">
+        <div class="grid grid-cols-[1fr_300px] gap-5 items-start">
             <div>
                 <div class="form-group">
-                    <label style="font-weight: 600;">Prompt</label>
-                    <textarea id="editor-prompt" rows="8" class="form-control" style="font-family: monospace; font-size: 0.9rem;" oninput="updateNewsletterContent('${currentEditorTab}', 'prompt', this.value)">${promptValue}</textarea>
+                    <label class="font-semibold">Prompt</label>
+                    <textarea id="editor-prompt" rows="8" class="form-control font-[monospace] text-[0.9rem] mt-2 p-2" oninput="updateNewsletterContent('${currentEditorTab}', 'prompt', this.value)">${promptValue}</textarea>
                 </div>
 
-                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                <div class="flex items-center gap-2.5 mt-2 mb-4">
                     <button class="btn btn-secondary btn-sm" onclick="syncCategoryPrompt('${currentEditorTab}')">Refresh Category Links</button>
-                    <span style="font-size: 0.8rem; color: #777;">The prompt auto-loads all article links for ${currentEditorTab}.</span>
+                    <span class="text-[0.8rem] text-[#777]">The prompt auto-loads all article links for ${currentEditorTab}.</span>
                 </div>
 
-                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px; justify-content: space-between; flex-wrap: wrap;">
-                    <div style="display: flex; align-items: center; gap: 15px;">
-                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 0.9rem;">
+                <div class="flex items-center gap-4 mb-5 justify-between flex-wrap">
+                    <div class="flex items-center gap-4">
+                        <label class="flex items-center gap-1.25 cursor-pointer text-[0.9rem]">
                             <input type="radio" id="rules-on-${currentEditorTab}" name="useRulesGroup-${currentEditorTab}" ${content.useRules !== false ? 'checked' : ''} onchange="updateNewsletterContent('${currentEditorTab}', 'useRules', true)">
                             Use Summary Rules
                         </label>
-                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 0.9rem;">
+                        <label class="flex items-center gap-1.25 cursor-pointer text-[0.9rem]">
                             <input type="radio" id="rules-off-${currentEditorTab}" name="useRulesGroup-${currentEditorTab}" ${content.useRules === false ? 'checked' : ''} onchange="updateNewsletterContent('${currentEditorTab}', 'useRules', false)">
                             Custom (No Rules)
                         </label>
@@ -1312,37 +1370,37 @@ window.renderEditorContent = () => {
         </div>
 
         <div>
-            <div id="editor-articles-list" style="margin-bottom: 15px; font-size: 0.85rem;"></div>
+            <div id="editor-articles-list" class="mb-4 text-[0.85rem]"></div>
             <div class="form-group">
-                <label style="font-weight: 600;">Summary Rules</label>
-                <textarea id="editor-summary-rules" rows="14" class="form-control" style="font-size: 0.85rem; background: #fffde7; border-color: #fbc02d;" oninput="updateSummaryRules(this.value)" placeholder="Persistent rules sent as system instructions to the AI...">${summaryRulesValue}</textarea>
-                <div style="font-size: 0.7rem; color: #999; margin-top: 4px;">These rules persist across saves and categories.</div>
+                <label class="font-semibold">Summary Rules</label>
+                <textarea id="editor-summary-rules" rows="14" class="form-control text-[0.85rem] bg-[#fffde7] border-[#fbc02d] mt-2 p-2" oninput="updateSummaryRules(this.value)" placeholder="Persistent rules sent as system instructions to the AI...">${summaryRulesValue}</textarea>
+                <div class="text-[0.7rem] text-[#999] mt-1">These rules persist across saves and categories.</div>
             </div>
         </div>
 
-        <div class="form-group" style="margin-top: 10px;">
-            <label style="font-weight: 600;">Created Result</label>
-            <textarea id="editor-result" rows="10" class="form-control" style="font-size: 0.9rem; background: #f5f5f5;" oninput="updateNewsletterContent('${currentEditorTab}', 'result', this.value)" placeholder="The AI-generated result will appear here...">${resultValue}</textarea>
+        <div class="form-group mt-2.5">
+            <label class="font-semibold">Created Result</label>
+            <textarea id="editor-result" rows="10" class="form-control text-[0.9rem] bg-[#f5f5f5] mt-2 p-2" oninput="updateNewsletterContent('${currentEditorTab}', 'result', this.value)" placeholder="The AI-generated result will appear here...">${resultValue}</textarea>
         </div>
 
-        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
+        <div class="flex justify-end gap-2.5 mt-4">
             <button class="btn btn-primary btn-sm" onclick="selectGeneratedContent('${currentEditorTab}')">Select ${currentEditorTab}</button>
             <button class="btn btn-outline btn-sm" onclick="copyEditorContent('${currentEditorTab}')">Copy ${currentEditorTab} Content</button>
         </div>
 
-        <div style="margin-top: 24px; padding-top: 18px; border-top: 1px solid #e5e7eb;">
-            <label style="font-weight: 700; display: block; margin-bottom: 12px;">Selected Content</label>
-            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px;">
+        <div class="mt-6 pt-4.5 border-t border-[#e5e7eb]">
+            <label class="font-bold block mb-3">Selected Content</label>
+            <div class="grid grid-cols-2 gap-3.5">
                 ${selectedSummaryHtml}
             </div>
         </div>
 
-        <div style="margin-top: 20px; padding-top: 18px; border-top: 1px solid #e5e7eb;">
-            <label style="font-weight: 700; display: block; margin-bottom: 10px;">Greetings Selection</label>
-            <select class="form-control" style="max-width: 520px;" onchange="updateSelectedGreeting(this.value)">
+        <div class="mt-5 pt-4.5 border-t border-[#e5e7eb]">
+            <label class="font-bold block mb-2.5">Greetings Selection</label>
+            <select class="form-control max-w-130 p-2" onchange="updateSelectedGreeting(this.value)">
                 ${greetingOptionsHtml}
             </select>
-            <div style="font-size: 0.8rem; color: #666; margin-top: 8px;">This changes only the greeting line. The sign-off name stays as Jessica.</div>
+            <div class="text-[0.8rem] text-[#666] mt-2">This changes only the greeting line. The sign-off name stays as Jessica.</div>
         </div>
     `;
     const templateEl = document.getElementById('editor-template');
@@ -1355,14 +1413,14 @@ window.renderEditorContent = () => {
                 const title = escapeHtml(a.title || 'Untitled');
                 const url = escapeHtml(a.url || '');
                 const date = escapeHtml(a.date || '');
-                return `<div style="padding: 8px 0; border-bottom: 1px solid #eee;">
-                    <div style="font-weight: 600;">${i + 1}. ${title}</div>
-                    ${date ? `<div style="font-size: 0.75rem; color: #777;">${date}</div>` : ''}
-                    ${url ? `<a href="${url}" target="_blank" style="font-size: 0.78rem; word-break: break-all;">${url}</a>` : '<span class="text-muted">No URL</span>'}
+                return `<div class="py-2 border-b border-[#eee]">
+                    <div class="font-semibold">${i + 1}. ${title}</div>
+                    ${date ? `<div class="text-[0.75rem] text-[#777]">${date}</div>` : ''}
+                    ${url ? `<a href="${url}" target="_blank" class="text-[0.78rem] break-all">${url}</a>` : '<span class="text-muted">No URL</span>'}
                 </div>`;
             }).join('')
             : '<span class="text-muted">No priority 1-4 articles for ' + currentEditorTab + '.</span>';
-        listEl.innerHTML = '<label style="font-weight: 600;">Summary Source Articles for ' + currentEditorTab + '</label><div style="max-height: 280px; overflow-y: auto; margin-top: 6px; line-height: 1.4;">' + listHtml + '</div><div style="font-size: 0.7rem; color: #999; margin-top: 4px;">Only articles marked 1, 2, 3, or 4 in Article View/Image View are used here for summary generation.</div>';
+        listEl.innerHTML = '<label class="font-semibold">Summary Source Articles for ' + currentEditorTab + '</label><div class="max-h-70 overflow-y-auto mt-1.5 leading-[1.4]">' + listHtml + '</div><div class="text-[0.7rem] text-[#999] mt-1">Only articles marked 1, 2, 3, or 4 in Article View/Image View are used here for summary generation.</div>';
     }
 };
 
@@ -1372,7 +1430,12 @@ window.updateSummaryRules = (value) => {
 };
 
 window.updateTemplate = (category, value) => {
-    if (!newsletterContent.templates) newsletterContent.templates = { MED: '', THC: '', CBD: '', INV: '' };
+    if (!newsletterContent.templates) newsletterContent.templates = {
+        MED: '',
+        THC: '',
+        CBD: '',
+        INV: '',
+    };
     newsletterContent.templates[category] = value;
     saveState();
 };
@@ -1385,7 +1448,12 @@ window.uploadSingleTemplate = () => {
     const file = input.files[0];
     const reader = new FileReader();
     reader.onload = () => {
-        if (!newsletterContent.templates) newsletterContent.templates = { MED: '', THC: '', CBD: '', INV: '' };
+        if (!newsletterContent.templates) newsletterContent.templates = {
+            MED: '',
+            THC: '',
+            CBD: '',
+            INV: '',
+        };
         newsletterContent.templates[category] = reader.result;
         saveState();
         input.value = '';
@@ -1403,7 +1471,12 @@ window.uploadAllTemplates = () => {
         return alert('Select exactly 4 HTML files (in order: MED, THC, CBD, INV).');
     }
     const categories = ['MED', 'THC', 'CBD', 'INV'];
-    if (!newsletterContent.templates) newsletterContent.templates = { MED: '', THC: '', CBD: '', INV: '' };
+    if (!newsletterContent.templates) newsletterContent.templates = {
+        MED: '',
+        THC: '',
+        CBD: '',
+        INV: '',
+    };
     let loaded = 0;
     const done = () => {
         loaded++;
@@ -1453,7 +1526,7 @@ window.generateSummary = async (category) => {
                 category,
                 articles: categoryArticles,
                 model: document.getElementById('ai-model') ? document.getElementById('ai-model').value : '',
-            })
+            }),
         });
         const data = await res.json();
 
@@ -1545,55 +1618,60 @@ function renderConfirmationView() {
         INV: getArticlesForCategory('INV').length,
         COOL_FINDS: articles.filter(a => a.status === 'COOL FINDS').length,
     };
-    const generatedSubjects = newsletterContent.generatedSubjects || { MED: '', THC: '', CBD: '', INV: '' };
+    const generatedSubjects = newsletterContent.generatedSubjects || {
+        MED: '',
+        THC: '',
+        CBD: '',
+        INV: '',
+    };
     const subjectPrompt = normalizeSubjectPrompt(newsletterContent.subjectPrompt);
 
     summary.innerHTML = `
         <h3>Newsletter Summary</h3>
         <p><strong>Newsletter Name:</strong> ${activeNewsletterName}</p>
         <p><strong>Inspirational Images:</strong> ${inspirationalImages.length} selected</p>
-        <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 15px;">
-            <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; text-align: center;">
-                <strong style="display:block; font-size: 1.2rem; color: #0d47a1;">MED</strong>
+        <div class="grid grid-cols-5 gap-2.5 mt-4">
+            <div class="bg-[#e3f2fd] p-4 rounded-lg text-center">
+                <strong class="block text-[1.2rem] text-[#0d47a1]">MED</strong>
                 <span>${stats.MED} Articles</span>
             </div>
-            <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; text-align: center;">
-                <strong style="display:block; font-size: 1.2rem; color: #1b5e20;">THC</strong>
+            <div class="bg-[#e8f5e9] p-4 rounded-lg text-center">
+                <strong class="block text-[1.2rem] text-[#1b5e20]">THC</strong>
                 <span>${stats.THC} Articles</span>
             </div>
-            <div style="background: #fff3e0; padding: 15px; border-radius: 8px; text-align: center;">
-                <strong style="display:block; font-size: 1.2rem; color: #e65100;">CBD</strong>
+            <div class="bg-[#fff3e0] p-4 rounded-lg text-center">
+                <strong class="block text-[1.2rem] text-[#e65100]">CBD</strong>
                 <span>${stats.CBD} Articles</span>
             </div>
-            <div style="background: #f3e5f5; padding: 15px; border-radius: 8px; text-align: center;">
-                <strong style="display:block; font-size: 1.2rem; color: #4a148c;">INV</strong>
+            <div class="bg-[#f3e5f5] p-4 rounded-lg text-center">
+                <strong class="block text-[1.2rem] text-[#4a148c]">INV</strong>
                 <span>${stats.INV} Articles</span>
             </div>
-            <div style="background: #e0f7fa; padding: 15px; border-radius: 8px; text-align: center;">
-                <strong style="display:block; font-size: 1.2rem; color: #006064;">COOL</strong>
+            <div class="bg-[#e0f7fa] p-4 rounded-lg text-center">
+                <strong class="block text-[1.2rem] text-[#006064]">COOL</strong>
                 <span>${stats.COOL_FINDS} Finds</span>
             </div>
         </div>
-        <div style="margin-top: 22px; padding: 16px; border: 1px solid #e5e7eb; border-radius: 10px; background: #fafafa;">
-            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; margin-bottom:12px;">
+        <div class="mt-5.5 p-4 border border-[#e5e7eb] rounded-[10px] bg-[#fafafa]">
+            <div class="flex justify-between items-start gap-4 flex-wrap mb-3">
                 <div>
-                    <div style="font-size: 1rem; font-weight: 700; margin-bottom: 4px;">Subject Generator</div>
-                    <div style="font-size: 0.82rem; color:#666;">Uses the top 3 priority articles for each category and generates clicky email subjects with emojis.</div>
+                    <div class="text-[1rem] font-bold mb-1">Subject Generator</div>
+                    <div class="text-[0.82rem] text-[#666]">Uses the top 3 priority articles for each category and generates clicky email subjects with emojis.</div>
                 </div>
-                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <div class="flex gap-2.5 flex-wrap">
                     <button id="btn-generate-subjects" class="btn btn-primary btn-sm" onclick="generateAllSubjects()"><span id="btn-generate-subjects-text">Generate Subjects</span></button>
                     <button class="btn btn-outline btn-sm" type="button" onclick="pushStateToServer()" title="Save the subject prompt and generated subjects to Supabase">Push To Server</button>
                 </div>
             </div>
-            <textarea class="form-control" rows="3" style="margin-bottom: 12px; font-size: 0.9rem;" oninput="updateSubjectPrompt(this.value)">${escapeHtml(subjectPrompt)}</textarea>
-            <div style="display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+            <textarea class="form-control mb-3 text-[0.9rem] p-2" rows="3" oninput="updateSubjectPrompt(this.value)">${escapeHtml(subjectPrompt)}</textarea>
+            <div class="grid grid-cols-2 gap-3">
                 ${['MED', 'THC', 'CBD', 'INV'].map((cat) => `
-                    <div style="padding: 12px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px;">
+                    <div class="p-3 border border-[#e5e7eb] rounded-lg bg-white">
+                        <div class="flex justify-between items-center gap-2.5">
                             <strong>${cat}</strong>
                             <button class="btn btn-outline btn-sm" onclick="copyGeneratedSubject('${cat}')">Copy</button>
                         </div>
-                        <textarea class="form-control" rows="3" style="font-size: 0.88rem; background:#fff;" oninput="updateGeneratedSubject('${cat}', this.value)" placeholder="Generate a subject for ${cat}...">${escapeHtml(generatedSubjects[cat] || '')}</textarea>
+                        <textarea class="form-control text-[0.88rem] bg-white mt-2 p-2" rows="3" oninput="updateGeneratedSubject('${cat}', this.value)" placeholder="Generate a subject for ${cat}...">${escapeHtml(generatedSubjects[cat] || '')}</textarea>
                     </div>
                 `).join('')}
             </div>
@@ -1730,11 +1808,11 @@ function buildFallbackConfirmationHtml(category) {
         const source = escapeHtml(getSourceLabel(article.url || ''));
         const image = getArticleImageUrl(article);
         return `
-            <div style="display:flex; gap:12px; padding:12px 0; border-bottom:1px solid #eee;">
-                ${image ? `<img src="${image}" alt="" style="width:60px;height:60px;object-fit:cover;border-radius:6px;">` : ''}
+            <div style="display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid #eee;">
+                ${image ? `<img src="${image}" alt="" style="width: 60px; height: 60px; object-fit: cover; border-radius: 6px;">` : ''}
                 <div>
-                    <a href="${url}" target="_blank" style="color:#111; font-weight:700; text-decoration:none;">${title}</a>
-                    <div><a href="${url}" target="_blank" style="color:#2a6edc; font-size:0.85rem;">${source}</a></div>
+                    <a href="${url}" target="_blank" style="color: #111; font-weight: 700; text-decoration: none;">${title}</a>
+                    <div><a href="${url}" target="_blank" style="color: #2a6edc; font-size: 0.85rem;">${source}</a></div>
                 </div>
             </div>
         `;
@@ -1742,10 +1820,10 @@ function buildFallbackConfirmationHtml(category) {
     const findsHtml = getInterestingFindsArticles().slice(0, 4).map(article => {
         const title = escapeHtml(article.title || 'Untitled');
         const url = article.url || '#';
-        return `<li style="margin-bottom:8px;"><a href="${url}" target="_blank">${title}</a></li>`;
+        return `<li style="margin-bottom: 8px;"><a href="${url}" target="_blank">${title}</a></li>`;
     }).join('');
     const inspiration = chooseConfirmationInspirationalImage();
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${newsletterName} - ${category}</title></head><body style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:20px;">
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${newsletterName} - ${category}</title></head><body style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px;">
         <h1>${newsletterName} - ${category}</h1>
         <p>${summary || 'No summary selected yet.'}</p>
         <h2>Weekly News</h2>
@@ -1753,7 +1831,7 @@ function buildFallbackConfirmationHtml(category) {
         <h2>Interesting Finds</h2>
         <ul>${findsHtml || '<li>No interesting finds selected yet.</li>'}</ul>
         <h2>Inspiration</h2>
-        ${inspiration ? `<img src="${inspiration}" alt="Inspiration" style="max-width:100%;">` : '<p>No inspirational image selected yet.</p>'}
+        ${inspiration ? `<img src="${inspiration}" alt="Inspiration" style="max-width: 100%;">` : '<p>No inspirational image selected yet.</p>'}
     </body></html>`;
 }
 
@@ -1769,7 +1847,7 @@ function applySummaryToTemplate(doc, category) {
         .filter(Boolean)
         .map(line => escapeHtml(line));
 
-    introCell.innerHTML = `<span style="font-size:14px;line-height: 150%;color: #000000;">Hi [FNAME],<br><br>${lines.join('<br>')}<br><br>${selectedGreeting}<br>Jessica<br><br>If this newsletter&#8217;s not for you, just <a href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}" style="color:#2baadf;text-decoration:underline;">unsubscribe</a> and you won&#8217;t hear from us again. :) </span><br />&nbsp;`;
+    introCell.innerHTML = `<span style="font-size: 14px; line-height: 150%; color: #000000;">Hi [FNAME],<br><br>${lines.join('<br>')}<br><br>${selectedGreeting}<br>Jessica<br><br>If this newsletter&#8217;s not for you, just <a href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}" style="color: #2baadf; text-decoration: underline;">unsubscribe</a> and you won&#8217;t hear from us again. :) </span><br />&nbsp;`;
 }
 
 function getGeneratedConfirmationHeading(category) {
@@ -1813,13 +1891,13 @@ function enforceFixedTemplateChrome(doc, category) {
         footerBlocks[0].innerHTML = `
             <div><em>Copyright &copy; 2026 Purablis, All rights reserved.</em></div>
             <div>Email Contact:</div>
-            <div><a href="mailto:${TEMPLATE_FIXED_CONTENT.contactEmail}" style="mso-line-height-rule: exactly;-ms-text-size-adjust: 100%;-webkit-text-size-adjust: 100%;color: #0000f1;font-weight: normal;text-decoration: underline;" target="_blank">${TEMPLATE_FIXED_CONTENT.contactEmail}</a><br />
-            <a href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}" style="color:#2baadf;text-decoration:underline;">Unsubscribe</a></div>
+            <div><a href="mailto:${TEMPLATE_FIXED_CONTENT.contactEmail}" style="mso-line-height-rule: exactly; -ms-text-size-adjust: 100%; -webkit-text-size-adjust: 100%; color: #0000f1; font-weight: normal; text-decoration: underline;" target="_blank">${TEMPLATE_FIXED_CONTENT.contactEmail}</a><br />
+            <a href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}" style="color: #2baadf; text-decoration: underline;">Unsubscribe</a></div>
             <div>${escapeHtml(TEMPLATE_FIXED_CONTENT.footerAddress).replace(/·/g, '&middot;')}</div>
         `;
     }
     if (footerBlocks[1]) {
-        footerBlocks[1].innerHTML = `<span style="font-size:11px;line-height: 150%;color: #989898;">${escapeHtml(TEMPLATE_FIXED_CONTENT.footerLegal)}</span>`;
+        footerBlocks[1].innerHTML = `<span style="font-size: 11px; line-height: 150%; color: #989898;">${escapeHtml(TEMPLATE_FIXED_CONTENT.footerLegal)}</span>`;
     }
 }
 
@@ -1888,7 +1966,7 @@ function buildSummaryHtml(category) {
                 ${selectedGreeting}<br/>
                 Jessica<br/>
                 <br/>
-                If this newsletter&#8217;s not for you, just <a href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}" style="color:#2baadf;text-decoration:underline;">unsubscribe</a> and you won&#8217;t hear from us again. :)
+                If this newsletter&#8217;s not for you, just <a href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}" style="color: #2baadf; text-decoration: underline;">unsubscribe</a> and you won&#8217;t hear from us again. :)
             </span><br/>
             &nbsp;
         </div>`;
@@ -1926,9 +2004,9 @@ function renderTemplateHtml(category, templateHtml) {
     }
 
     html = html.replace(/<a href="http:\/\/www\.purablis\.com" target="_blank"><img alt="" class="puralogsize" src="[^"]*" \/><\/a>/i, `<a href="${TEMPLATE_FIXED_CONTENT.logoHref}" target="_blank"><img alt="" class="puralogsize" src="${TEMPLATE_FIXED_CONTENT.logoSrc}" /></a>`);
-    html = html.replace(/<a href="https:\/\/www\.youtube\.com\/Purablis"[\s\S]*?<img alt="YouTube" class="mcnFollowBlockIcon" src="[^"]*"[\s\S]*?<\/a>/i, `<a href="${TEMPLATE_FIXED_CONTENT.youtubeHref}" style="mso-line-height-rule: exactly;-ms-text-size-adjust: 100%;-webkit-text-size-adjust: 100%;" target="_blank"><img alt="YouTube" class="mcnFollowBlockIcon" src="${TEMPLATE_FIXED_CONTENT.youtubeIconSrc}" style="width: 30px;max-width: 30px;display: block;border: 0;height: auto;outline: none;text-decoration: none;-ms-interpolation-mode: bicubic;" width="30" /></a>`);
-    html = html.replace(/<a href="https:\/\/ap\.lovethelist\.com\/index\.php\/lists\/qk5307z6w1e34\/unsubscribe\/unsubscribe-direct" style="color:#2baadf;text-decoration:underline;">unsubscribe<\/a>/i, `<a href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}" style="color:#2baadf;text-decoration:underline;">unsubscribe</a>`);
-    html = html.replace(/<a href="https:\/\/ap\.lovethelist\.com\/index\.php\/lists\/qk5307z6w1e34\/unsubscribe\/unsubscribe-direct" style="color:#2baadf;text-decoration:underline;">Unsubscribe<\/a>/i, `<a href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}" style="color:#2baadf;text-decoration:underline;">Unsubscribe</a>`);
+    html = html.replace(/<a href="https:\/\/www\.youtube\.com\/Purablis"[\s\S]*?<img alt="YouTube" class="mcnFollowBlockIcon" src="[^"]*"[\s\S]*?<\/a>/i, `<a href="${TEMPLATE_FIXED_CONTENT.youtubeHref}" style="mso-line-height-rule: exactly; -ms-text-size-adjust: 100%;-webkit-text-size-adjust: 100%;" target="_blank"><img alt="YouTube" class="mcnFollowBlockIcon" src="${TEMPLATE_FIXED_CONTENT.youtubeIconSrc}" style="width: 30px; max-width: 30px; display: block; border: 0; height: auto; outline: none; text-decoration: none;-ms-interpolation-mode: bicubic;" width="30" /></a>`);
+    html = html.replace(/<a href="https:\/\/ap\.lovethelist\.com\/index\.php\/lists\/qk5307z6w1e34\/unsubscribe\/unsubscribe-direct" style="color: #2baadf; text-decoration: underline;">unsubscribe<\/a>/i, `<a href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}" style="color:#2baadf;text-decoration:underline;">unsubscribe</a>`);
+    html = html.replace(/<a href="https:\/\/ap\.lovethelist\.com\/index\.php\/lists\/qk5307z6w1e34\/unsubscribe\/unsubscribe-direct" style="color: #2baadf; text-decoration: underline;">Unsubscribe<\/a>/i, `<a href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}" style="color:#2baadf;text-decoration:underline;">Unsubscribe</a>`);
 
     const generatedHeading = getGeneratedConfirmationHeading(category);
     if (generatedHeading) {
@@ -1989,24 +2067,24 @@ async function renderConfirmationPreviews() {
 
     const selectedSummary = getSelectedOrGeneratedSummary(currentConfirmationTab);
     container.innerHTML = `
-        <div class="tabs-container" style="margin-bottom: 18px; border-bottom: 1px solid #ddd;">
+        <div class="tabs-container mb-4.5 border-b border-[#ddd]">
             <button class="tab-btn ${currentConfirmationTab === 'MED' ? 'active' : ''}" onclick="switchConfirmationTab('MED')">MED</button>
             <button class="tab-btn ${currentConfirmationTab === 'THC' ? 'active' : ''}" onclick="switchConfirmationTab('THC')">THC</button>
             <button class="tab-btn ${currentConfirmationTab === 'CBD' ? 'active' : ''}" onclick="switchConfirmationTab('CBD')">CBD</button>
             <button class="tab-btn ${currentConfirmationTab === 'INV' ? 'active' : ''}" onclick="switchConfirmationTab('INV')">INV</button>
         </div>
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; margin-bottom:14px;">
+        <div class="flex justify-between items-start gap-4 flex-wrap mb-3.5">
             <div>
-                <div style="font-size: 1rem; font-weight: 700; margin-bottom: 4px;">${currentConfirmationTab} Preview</div>
-                <div style="font-size: 0.85rem; color:#666;">Uses the example email template itself, then fills in the current summary, ranked articles, interesting finds, and one inspirational image.</div>
+                <div class="text-[1rem] font-bold mb-1">${currentConfirmationTab} Preview</div>
+                <div class="text-[0.85rem] text-[#666]">Uses the example email template itself, then fills in the current summary, ranked articles, interesting finds, and one inspirational image.</div>
             </div>
-            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <div class="flex gap-2.5 flex-wrap">
                 <button class="btn btn-success btn-sm" onclick="downloadConfirmationHtml('${currentConfirmationTab}')">Download HTML</button>
                 <button class="btn btn-outline btn-sm" onclick="downloadConfirmationDoc('${currentConfirmationTab}')">Download DOC</button>
             </div>
         </div>
-        <div id="confirmation-preview-frame-wrap" style="border:1px solid #ddd; border-radius: 10px; overflow:auto; background:#fff;">
-            <div style="padding: 24px; text-align:center; color:#666;">Loading ${currentConfirmationTab} template preview...</div>
+        <div id="confirmation-preview-frame-wrap" class="border border-[#ddd] rounded-[10px] overflow-auto bg-white">
+            <div class="p-6 text-center text-[#666]">Loading ${currentConfirmationTab} template preview...</div>
         </div>
     `;
 
@@ -2014,7 +2092,7 @@ async function renderConfirmationPreviews() {
     const frameWrap = document.getElementById('confirmation-preview-frame-wrap');
     if (!frameWrap) return;
 
-    frameWrap.innerHTML = `<iframe title="${currentConfirmationTab} newsletter preview" style="width:900px; min-width:900px; min-height:1100px; border:0; background:#fff; display:block; margin:0 auto;"></iframe>`;
+    frameWrap.innerHTML = `<iframe title="${currentConfirmationTab} newsletter preview" class="w-225 min-w-225 min-h-275 border-0 bg-white block mx-auto"></iframe>`;
     const iframe = frameWrap.querySelector('iframe');
     if (iframe) iframe.srcdoc = html;
 }
@@ -2070,7 +2148,7 @@ window.generateAllSubjects = async () => {
                 prompt,
                 categories: categoryArticles,
                 model: 'gemini-flash-3-0',
-            })
+            }),
         });
         const data = await parseJsonResponse(res, 'Subject generation route did not return JSON. Restart the app server and try again.');
         if (!res.ok || !data.success || !data.subjects) {
@@ -2123,7 +2201,7 @@ window.exportSpreadsheet = () => {
             '', '',
             medText, thcText, cbdText, invText,
         ],
-        ['Title', 'URL', 'MED', 'THC', 'CBD', 'INV', 'Image URL', 'Published Image URL', 'MED Newsletter Text', 'THC Newsletter Text', 'CBD Newsletter Text', 'INV Newsletter Text']
+        ['Title', 'URL', 'MED', 'THC', 'CBD', 'INV', 'Image URL', 'Published Image URL', 'MED Newsletter Text', 'THC Newsletter Text', 'CBD Newsletter Text', 'INV Newsletter Text'],
     ];
 
     chosen.forEach(a => {
@@ -2163,7 +2241,7 @@ window.exportNewsletter = () => {
     const data = {
         meta: {
             name: document.getElementById('newsletter-name').value,
-            generatedAt: new Date().toISOString()
+            generatedAt: new Date().toISOString(),
         },
         inspirationalImages,
         content: newsletterContent,
@@ -2190,7 +2268,7 @@ function buildArticlesHtml(category) {
     });
     return relevant.map(a => `
         <div class="article-item">
-            ${a.image ? `<img src="${a.image}" alt="" style="max-width:90px;height:90px;object-fit:cover;" onerror="this.onerror=null;this.src='${a.originalImageUrl || ''}';">` : ''}
+            ${a.image ? `<img src="${a.image}" alt="" style="max-width: 90px; height: 90px; object-fit: cover;" onerror="this.onerror=null;this.src='${a.originalImageUrl || ''}';">` : ''}
             <div>
                 <strong>${(a.title || '').replace(/</g, '&lt;')}</strong>
                 <a href="${a.url || '#'}">${(a.url || '').replace(/</g, '&lt;')}</a>
@@ -2225,7 +2303,7 @@ window.generateNewsletters = () => {
             const safeResult = (resultText || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
             html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${(newsletterName + ' - ' + cat).replace(/</g, '&lt;')}</title></head><body>
                 <h1>${(newsletterName + ' - ' + cat).replace(/</g, '&lt;')}</h1>
-                ${inspirationalImg ? `<img src="${inspirationalImg.replace(/"/g, '&quot;')}" alt="Header" style="max-width:100%;">` : ''}
+                ${inspirationalImg ? `<img src="${inspirationalImg.replace(/"/g, '&quot;')}" alt="Header" style="max-width: 100%;">` : ''}
                 <div class="summary">${safeResult}</div>
                 <div class="articles">${articlesHtml}</div>
             </body></html>`;
@@ -2379,7 +2457,7 @@ window.publishAllImagesToPurablis = async () => {
 
                     const box = document.getElementById(`selected-img-${idx}`);
                     if (box) {
-                        box.innerHTML = `<div class="selected-image-container"><img src="${data.url}" class="img-fluid" style="max-height: 120px;" onerror="this.onerror=null;this.src='${articles[idx].originalImageUrl || ''}';this.parentElement.classList.add('img-fallback');"><button class="btn-remove-image" onclick="removeImage(${idx})">×</button><span class="badge-published" title="Published">P</span></div>`;
+                        box.innerHTML = `<div class="selected-image-container"><img src="${data.url}" class="img-fluid max-h-[120px]" onerror="this.onerror=null;this.src='${articles[idx].originalImageUrl || ''}';this.parentElement.classList.add('img-fallback');"><button class="btn-remove-image" onclick="removeImage(${idx})">×</button><span class="badge-published" title="Published">P</span></div>`;
                     }
                 } else {
                     fail++;
@@ -2454,7 +2532,8 @@ window.downloadAllImagesZip = async () => {
                     if (name && name.includes('.')) {
                         filename = name;
                     }
-                } catch (e) {}
+                } catch (e) {
+                }
             }
 
             // 2. Try to get from current image URL (if local path)
@@ -2464,7 +2543,8 @@ window.downloadAllImagesZip = async () => {
                     if (name && name.includes('.')) {
                         filename = name;
                     }
-                } catch(e) {}
+                } catch (e) {
+                }
             }
 
             // 3. Fallback to title
@@ -2570,7 +2650,7 @@ window.exportArticlesXls = () => {
         optionalCell(a.ranks && a.ranks.CBD),
         optionalCell(a.ranks && a.ranks.INV),
         optionalCell(a.notes),
-        optionalCell(a.image)
+        optionalCell(a.image),
     ]));
 
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
@@ -2623,7 +2703,16 @@ function upsertImportedSession(name) {
     populateSavedDropdown();
 }
 
-async function uploadArticlesWorkbook({ inputId, buttonId, buttonLabel, replacePrompt, successMessage, switchToStep2 = false }) {
+async function uploadArticlesWorkbook(
+    {
+        inputId,
+        buttonId,
+        buttonLabel,
+        replacePrompt,
+        successMessage,
+        switchToStep2 = false,
+    },
+) {
     const input = document.getElementById(inputId);
     const button = document.getElementById(buttonId);
     const nameEl = document.getElementById('newsletter-name');
@@ -2726,7 +2815,9 @@ function formatAddedAt(iso) {
     return (d.getMonth() + 1) + '/' + d.getDate();
 }
 
-window.setBatchFilter = (value) => { batchFilter = value || ''; };
+window.setBatchFilter = (value) => {
+    batchFilter = value || '';
+};
 
 // Render Articles Function (Table View)
 function renderArticles() {
@@ -2745,14 +2836,17 @@ function renderArticles() {
         const addedAts = [...new Set(articles.map(a => a.addedAt).filter(Boolean))].sort();
         const currentVal = batchSelect.value;
         batchSelect.innerHTML = '<option value="">All</option>' + addedAts.map(iso => {
-            const label = formatAddedAt(iso) + ' ' + (new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }));
+            const label = formatAddedAt(iso) + ' ' + (new Date(iso).toLocaleTimeString(undefined, {
+                hour: '2-digit',
+                minute: '2-digit',
+            }));
             return `<option value="${iso}">${label}</option>`;
         }).join('');
         batchSelect.value = batchFilter || '';
     }
 
     if (articles.length === 0) {
-        list.innerHTML += '<div style="padding: 20px; text-align: center; color: #777;">No articles found. Please try searching again.</div>';
+        list.innerHTML += '<div class="p-5 text-center text-[#777]">No articles found. Please try searching again.</div>';
         updateStats();
         return;
     }
@@ -2776,7 +2870,7 @@ function renderArticles() {
         // Checkbox logic for categories
         const isStatusValid = ['Y', 'YM', 'M', 'COOL FINDS', 'LATER COOL'].includes(article.status);
         const disabledAttr = isStatusValid ? '' : 'disabled';
-        const disabledStyle = isStatusValid ? '' : 'opacity: 0.5; cursor: not-allowed;';
+        const disabledClass = isStatusValid ? '' : 'opacity-50 cursor-not-allowed';
 
         const categoryInputs = ['MED', 'THC', 'CBD', 'INV'].map(cat => {
             let rank = (article.ranks && (article.ranks[cat] ?? article.ranks[cat.toLowerCase()])) ?? (article.categories && article.categories.includes(cat) ? 'Y' : '');
@@ -2787,7 +2881,7 @@ function renderArticles() {
                     <input type="text"
                         value="${rank}"
                         oninput="updateCategoryRank(${index}, '${cat}', this.value)"
-                        style="${disabledStyle}"
+                        class="${disabledClass}"
                         ${disabledAttr}
                         placeholder=""
                     >
@@ -2804,28 +2898,25 @@ function renderArticles() {
                 </div>
 
                 <div class="col-article">
-                    <div style="display: flex; align-items: flex-start; gap: 8px;">
+                    <div class="flex items-start gap-2">
                         <textarea
-                            class="title-edit"
+                            class="title-edit font-[inherit] flex-1 min-w-30"
                             rows="2"
                             onchange="updateArticleField(${index}, 'title', this.value)"
-                            style="font-family: inherit; flex: 1; min-width: 120px;"
                         >${article.title}</textarea>
                         <span class="article-added-at" title="${article.addedAt ? 'Added ' + article.addedAt : 'No add date'}">${article.addedAt ? 'added ' + formatAddedAt(article.addedAt) : '—'}</span>
                     </div>
-                    <p style="margin: 5px 0; font-size: 0.85rem; color: #666;">
+                    <p class="my-1.25 text-[0.85rem] text-[#666]">
                         ${article.description ? article.description.substring(0, 120) + '...' : 'No description'}
                     </p>
 
-                    <div style="display: flex; align-items: center; gap: 5px;">
+                    <div class="flex items-center gap-1.25">
                         <input
                             type="text"
-                            class="url-edit"
+                            class="url-edit text-[0.8rem] py-0.5 px-1.25 w-full text-[#2f6e63]"
                             value="${article.url}"
-                            onchange="updateArticleField(${index}, 'url', this.value)"
-                            style="font-size: 0.8rem; padding: 2px 5px; width: 100%; color: #0066cc;"
-                        >
-                        <a href="${article.url}" target="_blank" title="Open Link" style="text-decoration: none;">🔗</a>
+                            onchange="updateArticleField(${index}, 'url', this.value)">
+                        <a href="${article.url}" target="_blank" title="Open Link" class="no-underline">🔗</a>
                     </div>
                 </div>
 
@@ -2859,16 +2950,15 @@ function renderArticles() {
 
                 <div class="col-keyword">
                     <textarea
-                        class="form-control"
+                        class="form-control w-full h-15 text-[0.85rem] resize-y"
                         onchange="updateArticleField(${index}, 'notes', this.value)"
                         placeholder="Notes..."
-                        style="width: 100%; height: 60px; font-size: 0.85rem; resize: vertical;"
                     >${article.notes || ''}</textarea>
                 </div>
 
                 <div class="col-actions">
-                    <button class="btn btn-sm btn-outline" style="color: #f57c00; border-color: #f57c00; margin-bottom: 5px; width: 100%;" onclick="archiveArticle(${index})">Archive</button>
-                    <button class="btn btn-sm btn-outline" style="color: #d32f2f; border-color: #d32f2f; width: 100%;" onclick="removeArticle(${index})">Remove</button>
+                    <button class="btn btn-sm btn-outline text-[#f57c00] border-[#f57c00] mb-2 w-full" onclick="archiveArticle(${index})">Archive</button>
+                    <button class="btn btn-sm btn-outline text-[#d32f2f] border-[#d32f2f] w-full" onclick="removeArticle(${index})">Remove</button>
                 </div>
             </div>
         `;
@@ -2930,13 +3020,15 @@ window.openAddArticleModal = () => {
     document.getElementById('add-article-title').value = '';
     document.getElementById('add-article-url').value = '';
     document.getElementById('add-article-status').value = 'Y';
-    ['med', 'thc', 'cbd', 'inv'].forEach(c => { document.getElementById('add-article-' + c).value = ''; });
-    modal.style.display = 'flex';
+    ['med', 'thc', 'cbd', 'inv'].forEach(c => {
+        document.getElementById('add-article-' + c).value = '';
+    });
+    showWithClass(modal, 'flex');
 };
 
 window.closeAddArticleModal = () => {
     const modal = document.getElementById('add-article-modal');
-    if (modal) modal.style.display = 'none';
+    if (modal) hideWithClass(modal);
 };
 
 window.addArticleFromModal = () => {
@@ -2965,7 +3057,9 @@ window.addArticleFromModal = () => {
         selected: true,
         addedAt: new Date().toISOString(),
     };
-    articles.forEach(a => { a.id = (a.id || 0) + 1; });
+    articles.forEach(a => {
+        a.id = (a.id || 0) + 1;
+    });
     articles.unshift(newArticle);
     saveState();
     renderArticles();
@@ -3008,6 +3102,7 @@ const RANK_SORT_ORDER = {
     'M': 54,
     'NO': 55,
 };
+
 function rankToSortValue(rank) {
     if (rank === undefined || rank === null) return 999;
     const s = String(rank).trim();
@@ -3177,17 +3272,17 @@ function updateStats() {
     });
 
     const sessionLabel = currentSessionName
-        ? `<span class="stat-item" style="background:#e8eaf6; color:#283593; font-weight:600;">${currentSessionName}</span>`
+        ? `<span class="stat-item bg-[#e8eaf6] text-[#283593] font-semibold">${currentSessionName}</span>`
         : '';
 
     const statsHtml = `
         ${sessionLabel}
         <span class="stat-item" title="Total articles in list">Total: ${articles.length}</span>
-        <span class="stat-item" style="background:#e0f7fa; color:#006064;" title="Articles checked in the Select column">Selected: ${selectedCount}</span>
-        <span class="stat-item" style="background:#e3f2fd; color:#0d47a1;">MED: ${counts.MED}</span>
-        <span class="stat-item" style="background:#e8f5e9; color:#1b5e20;">THC: ${counts.THC}</span>
-        <span class="stat-item" style="background:#fff3e0; color:#e65100;">CBD: ${counts.CBD}</span>
-        <span class="stat-item" style="background:#f3e5f5; color:#4a148c;">INV: ${counts.INV}</span>
+        <span class="stat-item bg-[#e0f7fa] text-[#006064]" title="Articles checked in the Select column">Selected: ${selectedCount}</span>
+        <span class="stat-item bg-[#e3f2fd] text-[#0d47a1]">MED: ${counts.MED}</span>
+        <span class="stat-item bg-[#e8f5e9] text-[#1b5e20]">THC: ${counts.THC}</span>
+        <span class="stat-item bg-[#fff3e0] text-[#e65100]">CBD: ${counts.CBD}</span>
+        <span class="stat-item bg-[#f3e5f5] text-[#4a148c]">INV: ${counts.INV}</span>
     `;
     statsEl.innerHTML = statsHtml;
     const footerEl = document.getElementById('article-stats-footer');
@@ -3229,7 +3324,8 @@ function saveSavedSessions(sessions) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: 'sessions', value: sessions }),
-    }).catch(() => {});
+    }).catch(() => {
+    });
 }
 
 let currentSessionName = '';
@@ -3265,10 +3361,17 @@ window.loadSession = () => {
 
     articles = session.articles || [];
     const savedAt = session.savedAt || new Date().toISOString();
-    articles.forEach(a => { if (!a.addedAt) a.addedAt = savedAt; });
+    articles.forEach(a => {
+        if (!a.addedAt) a.addedAt = savedAt;
+    });
     archivedArticles = session.archivedArticles || [];
     inspirationalImages = session.inspirationalImages || [];
-    const nc = session.newsletterContent || { MED: { intro: '', outro: '' }, THC: { intro: '', outro: '' }, CBD: { intro: '', outro: '' }, INV: { intro: '', outro: '' } };
+    const nc = session.newsletterContent || {
+        MED: { intro: '', outro: '' },
+        THC: { intro: '', outro: '' },
+        CBD: { intro: '', outro: '' },
+        INV: { intro: '', outro: '' },
+    };
     newsletterContent = {
         ...nc,
         templates: nc.templates || { MED: '', THC: '', CBD: '', INV: '' },
@@ -3337,7 +3440,7 @@ function populateSavedDropdown() {
     const hintEl = document.getElementById('state-load-hint');
     const textEl = document.getElementById('state-load-hint-text');
     if (hintEl && names.length === 0) {
-        hintEl.style.display = 'block';
+        showWithClass(hintEl, 'block');
         if (textEl && textEl.textContent === 'Loading…') {
             if (typeof window.updateStateHintFromDiagnostic === 'function') window.updateStateHintFromDiagnostic();
         }
@@ -3384,7 +3487,10 @@ window.pushStateToServer = async function () {
                 fetch('/api/newsletters', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: lastGeneratedNewsletter.meta.name, generated: lastGeneratedNewsletter }),
+                    body: JSON.stringify({
+                        name: lastGeneratedNewsletter.meta.name,
+                        generated: lastGeneratedNewsletter,
+                    }),
                 }),
             );
         }
@@ -3426,7 +3532,9 @@ window.getLaterCoolFinds = async function () {
             return;
         }
         const addedAt = new Date().toISOString();
-        toAdd.forEach(a => { a.addedAt = a.addedAt || addedAt; });
+        toAdd.forEach(a => {
+            a.addedAt = a.addedAt || addedAt;
+        });
         articles = [...toAdd, ...articles];
         laterCoolArticles = [];
         saveState();
@@ -3463,7 +3571,7 @@ window.refreshStateFromServer = async function () {
             }
         } else if (wrRes.status === 503) {
             msg = 'Server database not configured. ';
-            if (hintEl) hintEl.style.display = 'block';
+            if (hintEl) showWithClass(hintEl, 'block');
             await window.updateStateHintFromDiagnostic();
         }
         if (sessRes.ok) {
@@ -3471,21 +3579,23 @@ window.refreshStateFromServer = async function () {
             if (value && typeof value === 'object') {
                 const local = JSON.parse(localStorage.getItem('newsletter_saved_sessions') || '{}');
                 const merged = { ...value };
-                Object.keys(local).forEach(k => { if (!(k in merged)) merged[k] = local[k]; });
+                Object.keys(local).forEach(k => {
+                    if (!(k in merged)) merged[k] = local[k];
+                });
                 localStorage.setItem('newsletter_saved_sessions', JSON.stringify(merged));
                 if (typeof populateSavedDropdown === 'function') populateSavedDropdown();
                 const n = Object.keys(merged).length;
                 msg += n + ' saved session(s) (server + local).';
-                if (hintEl) hintEl.style.display = 'none';
+                if (hintEl) hideWithClass(hintEl);
             }
         } else if (sessRes.status === 503) {
             msg = (msg || '') + 'Sessions: server database not configured.';
-            if (hintEl) hintEl.style.display = 'block';
+            if (hintEl) showWithClass(hintEl, 'block');
             await window.updateStateHintFromDiagnostic();
         }
         alert(msg || 'No data from server. Check the yellow hint above for details.');
     } catch (e) {
-        if (hintEl) hintEl.style.display = 'block';
+        if (hintEl) showWithClass(hintEl, 'block');
         if (textEl) textEl.textContent = 'Could not reach server: ' + (e.message || 'network error') + '. Check that the API is deployed (e.g. Vercel runs the Express server).';
         alert('Could not reach server: ' + (e.message || 'network error'));
     }
@@ -3535,7 +3645,7 @@ async function searchMoreArticles() {
 
     btn.disabled = true;
     btn.textContent = 'Searching...';
-    status.style.display = 'none';
+    hideWithClass(status);
 
     try {
         const response = await fetch('/api/articles/search', {
@@ -3553,7 +3663,10 @@ async function searchMoreArticles() {
             // Assign IDs continuing from current max; mark when added
             const maxId = articles.reduce((max, a) => Math.max(max, a.id || 0), 0);
             const addedAt = new Date().toISOString();
-            newArticles.forEach((a, i) => { a.id = maxId + i + 1; a.addedAt = addedAt; });
+            newArticles.forEach((a, i) => {
+                a.id = maxId + i + 1;
+                a.addedAt = addedAt;
+            });
 
             articles = articles.concat(newArticles);
             saveState();
@@ -3563,7 +3676,7 @@ async function searchMoreArticles() {
             let msg = `Added ${newArticles.length} new articles.`;
             if (dupeCount > 0) msg += ` (${dupeCount} duplicates skipped)`;
             status.textContent = msg;
-            status.style.display = 'block';
+            showWithClass(status, 'block');
         } else {
             const clarification = await getAiClarificationFromError(data);
             const details = clarification || String(data.details || '').trim();
@@ -3598,7 +3711,7 @@ async function modifyExistingArticles() {
 
     btn.disabled = true;
     btn.textContent = 'Modifying...';
-    status.style.display = 'none';
+    hideWithClass(status);
 
     try {
         const response = await fetch('/api/articles/modify', {
@@ -3608,7 +3721,7 @@ async function modifyExistingArticles() {
                 prompt,
                 articles: selectedArticles,
                 model: document.getElementById('ai-model').value,
-            })
+            }),
         });
 
         const data = await response.json();
@@ -3625,7 +3738,7 @@ async function modifyExistingArticles() {
             saveState();
             renderArticles();
             status.textContent = `Modified ${data.articles.length} articles.`;
-            status.style.display = 'block';
+            showWithClass(status, 'block');
         } else {
             const clarification = await getAiClarificationFromError(data);
             const details = clarification || String(data.details || '').trim();
@@ -3721,7 +3834,7 @@ if (searchBtn) {
 
         searchBtn.disabled = true;
         searchBtn.textContent = "Searching...";
-        if (searchStatus) searchStatus.style.display = 'none';
+        if (searchStatus) hideWithClass(searchStatus);
 
         try {
             const response = await fetch('/api/articles/search', {
@@ -3740,10 +3853,10 @@ if (searchBtn) {
                 // Stay on page, show success message and next button
                 if (searchStatus) {
                     searchStatus.textContent = `Found ${data.articles.length} articles!`;
-                    searchStatus.style.display = 'inline';
+                    showWithClass(searchStatus, 'inline');
                 }
                 if (nextStep2Btn) {
-                    nextStep2Btn.style.display = 'inline-block';
+                    showWithClass(nextStep2Btn, 'inline-block');
                 }
 
             } else {

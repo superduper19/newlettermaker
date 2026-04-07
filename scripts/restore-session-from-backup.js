@@ -103,7 +103,7 @@ async function main() {
     currentSessions[toSession] = {
         ...source,
         articles: JSON.parse(JSON.stringify(source.articles)),
-        savedAt: new Date().toISOString()
+        savedAt: new Date().toISOString(),
     };
 
     const { error: eu } = await supabase
@@ -122,7 +122,16 @@ async function main() {
         const { error: ew } = await supabase
             .from(TABLE)
             .upsert(
-                { key: 'workspace', value: { articles: source.articles, archivedArticles: source.archivedArticles || [], inspirationalImages: source.inspirationalImages || [], newsletterContent: source.newsletterContent || {} }, updated_at: new Date().toISOString() },
+                {
+                    key: 'workspace',
+                    value: {
+                        articles: source.articles,
+                        archivedArticles: source.archivedArticles || [],
+                        inspirationalImages: source.inspirationalImages || [],
+                        newsletterContent: source.newsletterContent || {},
+                    },
+                    updated_at: new Date().toISOString(),
+                },
                 { onConflict: 'key' },
             );
         if (ew) {

@@ -46,7 +46,11 @@ function report(label, articles) {
             const rank = getRank(a, cat);
             const hasRank = rank !== '' && rank !== undefined;
             if (hasRank && validStatus.includes(a.status)) approved.push(a);
-            if (isNumericRank(rank)) numbered.push({ rank: String(rank).trim(), title: a.title || 'Untitled', url: a.url });
+            if (isNumericRank(rank)) numbered.push({
+                rank: String(rank).trim(),
+                title: a.title || 'Untitled',
+                url: a.url,
+            });
         });
         numbered.sort((a, b) => parseInt(a.rank, 10) - parseInt(b.rank, 10));
 
@@ -56,7 +60,10 @@ function report(label, articles) {
         if (numbered.length === 0) {
             console.log('  (none)');
         } else {
-            numbered.forEach(({ rank, title }) => console.log('  ' + rank + '. ' + (title.length > 72 ? title.slice(0, 69) + '...' : title)));
+            numbered.forEach(({
+                                  rank,
+                                  title,
+                              }) => console.log('  ' + rank + '. ' + (title.length > 72 ? title.slice(0, 69) + '...' : title)));
         }
     }
 }

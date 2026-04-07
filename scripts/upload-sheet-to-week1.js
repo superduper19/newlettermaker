@@ -109,8 +109,18 @@ async function main() {
     }
 
     const supabase = createClient(url, key);
-    const defaultContent = { MED: { intro: '', outro: '' }, THC: { intro: '', outro: '' }, CBD: { intro: '', outro: '' }, INV: { intro: '', outro: '' } };
-    const workspace = { articles, archivedArticles: [], inspirationalImages: [], newsletterContent: defaultContent };
+    const defaultContent = {
+        MED: { intro: '', outro: '' },
+        THC: { intro: '', outro: '' },
+        CBD: { intro: '', outro: '' },
+        INV: { intro: '', outro: '' },
+    };
+    const workspace = {
+        articles,
+        archivedArticles: [],
+        inspirationalImages: [],
+        newsletterContent: defaultContent,
+    };
     const sessions = {
         'Week 1': {
             articles: [...articles],

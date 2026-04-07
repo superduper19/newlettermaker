@@ -7,9 +7,9 @@ async function listModels() {
     try {
         // The SDK doesn't have a direct listModels method on the client instance easily accessible in all versions,
         // but let's try a simple generation with 'gemini-pro' which is usually standard.
-        // Actually, the error message suggested calling ListModels. 
+        // Actually, the error message suggested calling ListModels.
         // We can try to infer from a simple test script if we can't list.
-        
+
         // Let's try to just hit the API directly for listing if SDK fails, but let's try a known model first.
         const model = genAI.getGenerativeModel({ model: "gemini-pro" });
         const result = await model.generateContent("Hello");

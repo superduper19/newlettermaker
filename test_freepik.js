@@ -29,7 +29,9 @@ async function testFreepik() {
             console.log(`Found ${data.data.length} vectors.`);
             if (data.data.length > 0) console.log('Sample Vector URL:', data.data[0].image.source.url);
         }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+        console.error(e);
+    }
 
     console.log('\n--- Testing Icons (Flaticon) ---');
     const urlIcons = `https://api.freepik.com/v1/icons?locale=en-US&page=1&limit=3&term=${QUERY}`;
@@ -44,7 +46,9 @@ async function testFreepik() {
             // Inspect structure
             if (data.data.length > 0) console.log('Sample Icon:', JSON.stringify(data.data[0].images, null, 2));
         }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+        console.error(e);
+    }
 }
 
 testFreepik();
