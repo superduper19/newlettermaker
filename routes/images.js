@@ -32,7 +32,7 @@ let supabase = null;
 
 // FTP remote path from env (no leading slash). Public URL base with no trailing slash.
 function getRemotePath() {
-    const ftpPath = (process.env.GODADDY_FTP_PATH || 'News-roundup/images').replace(/^\/+/, '');
+    const ftpPath = (process.env.GODADDY_FTP_PATH || 'images').replace(/^\/+/, '');
     const publicBase = (process.env.GODADDY_PUBLIC_BASE_URL || '').replace(/\/+$/, '');
     return { remoteDir: ftpPath, publicUrlBase: publicBase };
 }
@@ -475,7 +475,7 @@ router.post('/upload-article', uploadMiddleware.single('image'), async (req, res
             });
 
             await client.ensureDir(remoteDir);
-            await client.uploadFrom(localPath, `${remoteDir}/${filename}`);
+            await client.uploadFrom(localPath, filename);
             console.log(`FTP upload OK (article): ${remoteDir}/${filename}`);
 
             const publicUrl = publicUrlBase ? `${publicUrlBase}/${filename}` : localUrl;
@@ -565,7 +565,7 @@ router.post('/publish-to-purablis', async (req, res) => {
 
             const { remoteDir, publicUrlBase } = getRemotePath();
             await client.ensureDir(remoteDir);
-            await client.uploadFrom(localPath, `${remoteDir}/${filename}`);
+            await client.uploadFrom(localPath, filename);
             console.log(`FTP upload OK (publish): ${remoteDir}/${filename}`);
 
             const publicUrl = publicUrlBase ? `${publicUrlBase}/${filename}` : `/uploads/${filename}`;
