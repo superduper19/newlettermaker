@@ -61,22 +61,30 @@ async function main() {
         ? { ...sessionsRow.value }
         : {};
 
-    const defaultContent = { MED: { intro: '', outro: '' }, THC: { intro: '', outro: '' }, CBD: { intro: '', outro: '' }, INV: { intro: '', outro: '' } };
+    const defaultContent = {
+        MED: { intro: '', outro: '' },
+        THC: { intro: '', outro: '' },
+        CBD: { intro: '', outro: '' },
+        INV: { intro: '', outro: '' },
+    };
     const nc = workspace.newsletterContent || defaultContent;
 
     sessions[sessionName] = {
         articles: JSON.parse(JSON.stringify(articles)),
         archivedArticles: workspace.archivedArticles || [],
         inspirationalImages: workspace.inspirationalImages || [],
-        newsletterContent: { ...nc, templates: (nc.templates || { MED: '', THC: '', CBD: '', INV: '' }) },
-        savedAt: new Date().toISOString()
+        newsletterContent: {
+            ...nc,
+            templates: (nc.templates || { MED: '', THC: '', CBD: '', INV: '' }),
+        },
+        savedAt: new Date().toISOString(),
     };
 
     const { error: eu } = await supabase
         .from(TABLE)
         .upsert(
             { key: 'sessions', value: sessions, updated_at: new Date().toISOString() },
-            { onConflict: 'key' }
+            { onConflict: 'key' },
         );
 
     if (eu) {

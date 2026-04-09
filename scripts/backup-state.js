@@ -21,7 +21,8 @@ const TABLE = process.env.SUPABASE_STATE_TABLE || 'newsletter_state';
 
 function timestamp() {
     const d = new Date();
-    const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
+    const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'),
+        day = String(d.getDate()).padStart(2, '0');
     const h = String(d.getHours()).padStart(2, '0'), min = String(d.getMinutes()).padStart(2, '0');
     return `${y}-${m}-${day}-${h}${min}`;
 }
@@ -48,7 +49,12 @@ async function main() {
         console.error('Failed to read workspace:', ew.message);
         process.exit(1);
     }
-    const workspace = (workspaceRow && workspaceRow.value) ? workspaceRow.value : { articles: [], archivedArticles: [], inspirationalImages: [], newsletterContent: {} };
+    const workspace = (workspaceRow && workspaceRow.value) ? workspaceRow.value : {
+        articles: [],
+        archivedArticles: [],
+        inspirationalImages: [],
+        newsletterContent: {},
+    };
 
     const { data: sessionsRow, error: es } = await supabase
         .from(TABLE)
@@ -67,7 +73,7 @@ async function main() {
     const backup = {
         backedUpAt: new Date().toISOString(),
         workspace,
-        sessions
+        sessions,
     };
 
     const dir = path.join(__dirname, '..', 'backups');
@@ -81,20 +87,28 @@ async function main() {
 
     if (sessionName) {
         const articles = workspace.articles || [];
-        const defaultContent = { MED: { intro: '', outro: '' }, THC: { intro: '', outro: '' }, CBD: { intro: '', outro: '' }, INV: { intro: '', outro: '' } };
+        const defaultContent = {
+            MED: { intro: '', outro: '' },
+            THC: { intro: '', outro: '' },
+            CBD: { intro: '', outro: '' },
+            INV: { intro: '', outro: '' },
+        };
         const nc = workspace.newsletterContent || defaultContent;
         sessions[sessionName] = {
             articles: JSON.parse(JSON.stringify(articles)),
             archivedArticles: workspace.archivedArticles || [],
             inspirationalImages: workspace.inspirationalImages || [],
-            newsletterContent: { ...nc, templates: (nc.templates || { MED: '', THC: '', CBD: '', INV: '' }) },
-            savedAt: new Date().toISOString()
+            newsletterContent: {
+                ...nc,
+                templates: (nc.templates || { MED: '', THC: '', CBD: '', INV: '' }),
+            },
+            savedAt: new Date().toISOString(),
         };
         const { error: eu } = await supabase
             .from(TABLE)
             .upsert(
                 { key: 'sessions', value: sessions, updated_at: new Date().toISOString() },
-                { onConflict: 'key' }
+                { onConflict: 'key' },
             );
         if (eu) {
             console.error('Failed to save session "' + sessionName + '" to server:', eu.message);

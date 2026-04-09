@@ -1,4 +1,3 @@
-
 async function testSearch() {
     console.log('Testing Search with "claude-opus-4-6"...');
     try {
@@ -8,12 +7,12 @@ async function testSearch() {
             body: JSON.stringify({
                 prompt: 'recent cannabis rescheduling news',
                 newsletterName: 'Test Newsletter',
-                model: 'gemini-1.5-pro-latest' // Testing Gemini as alternative
+                model: 'gemini-1.5-pro-latest', // Testing Gemini as alternative
             })
         });
 
         const data = await response.json();
-        
+
         if (data.success) {
             console.log('✅ Search Successful!');
             console.log(`Found ${data.count} articles.`);

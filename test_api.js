@@ -11,7 +11,7 @@ function post(urlStr, data) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(JSON.stringify(data))
+                'Content-Length': Buffer.byteLength(JSON.stringify(data)),
             }
         };
 
@@ -44,13 +44,13 @@ function post(urlStr, data) {
 
 async function test() {
     console.log("Starting API Tests...");
-    
+
     const models = [
         'claude-opus-4-6',
         'claude-sonnet-4-6',
         'claude-haiku-4-5', // Maps to 20251001 in backend
-        'gemini-flash-3-0', 
-        'gemini-flash-3-1-pro'
+        'gemini-flash-3-0',
+        'gemini-flash-3-1-pro',
     ];
 
     for (const model of models) {
@@ -61,7 +61,7 @@ async function test() {
                 newsletterName: "Test",
                 model: model,
                 startDate: "2024-01-01",
-                endDate: "2024-12-31"
+                endDate: "2024-12-31",
             });
             console.log(`SUCCESS [${model}]: Found ${res.count} articles`);
         } catch (e) {

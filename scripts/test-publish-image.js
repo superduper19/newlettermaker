@@ -18,8 +18,8 @@ const req = http.request({
     method: 'POST',
     headers: {
         'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body)
-    }
+        'Content-Length': Buffer.byteLength(body),
+    },
 }, (res) => {
     let data = '';
     res.on('data', chunk => data += chunk);

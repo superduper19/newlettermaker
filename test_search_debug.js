@@ -7,7 +7,7 @@ async function testSearch() {
             body: JSON.stringify({
                 prompt: 'Find 3 recent articles about marijuana rescheduling. Return real URLs.',
                 model: 'claude-opus-4-6',
-                newsletterName: 'Test Newsletter'
+                newsletterName: 'Test Newsletter',
             })
         });
 
@@ -19,7 +19,7 @@ async function testSearch() {
         } else {
             console.log(`SUCCESS: Found ${data.articles.length} articles.`);
             data.articles.forEach((a, i) => {
-                console.log(`[${i+1}] ${a.title} (${a.url}) - Status: ${a.isValid ? 'Valid' : 'Invalid'}`);
+                console.log(`[${i + 1}] ${a.title} (${a.url}) - Status: ${a.isValid ? 'Valid' : 'Invalid'}`);
                 if (a.paywall) console.log('   -> Paywall detected');
                 if (a.categories) console.log('   -> Categories:', a.categories.join(', '));
             });

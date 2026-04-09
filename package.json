@@ -4,8 +4,9 @@
   "description": "",
   "main": "server.js",
   "scripts": {
+    "build": "tailwindcss -i ./src/style.css -o ./public/css/style.css --minify",
     "start": "node server.js",
-    "test": "echo 'Error: no test specified' && exit 1"
+    "test": "node test_freepik.js"
   },
   "keywords": [],
   "author": "",
@@ -15,6 +16,7 @@
     "@anthropic-ai/sdk": "^0.82.0",
     "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.101.1",
+    "@tailwindcss/cli": "4.2.2",
     "basic-ftp": "^5.2.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.1",
@@ -23,6 +25,7 @@
     "node-fetch": "^3.3.2",
     "openai": "^6.33.0",
     "pg": "^8.20.0",
+    "tailwindcss": "4.2.2",
     "uuid": "^13.0.0",
     "xlsx": "^0.18.5"
   }

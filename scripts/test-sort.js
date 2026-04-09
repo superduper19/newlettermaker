@@ -8,7 +8,7 @@ const RANK_SORT_ORDER = {
     'Y': 52,
     'YM': 53,
     'M': 54,
-    'NO': 55
+    'NO': 55,
 };
 
 function rankToSortValue(rank) {

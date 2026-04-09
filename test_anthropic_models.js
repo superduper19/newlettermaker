@@ -10,7 +10,7 @@ const modelsToTest = [
     'claude-sonnet-4-6',
     'claude-haiku-4-5-20251001',
     'claude-3-opus-20240229', // Control
-    'claude-3-5-sonnet-20240620' // Control
+    'claude-3-5-sonnet-20240620', // Control
 ];
 
 async function testModel(modelId) {

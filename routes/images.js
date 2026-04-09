@@ -32,7 +32,7 @@ let supabase = null;
 
 // FTP remote path from env (no leading slash). Public URL base with no trailing slash.
 function getRemotePath() {
-    const ftpPath = (process.env.GODADDY_FTP_PATH || 'News-roundup/images').replace(/^\/+/, '');
+    const ftpPath = (process.env.GODADDY_FTP_PATH || 'images').replace(/^\/+/, '');
     const publicBase = (process.env.GODADDY_PUBLIC_BASE_URL || '').replace(/\/+$/, '');
     return { remoteDir: ftpPath, publicUrlBase: publicBase };
 }
@@ -115,7 +115,7 @@ async function listInspirationalLibrary() {
                 user: ftp.user,
                 password: ftp.password,
                 secure: true,
-                secureOptions: { rejectUnauthorized: false }
+                secureOptions: { rejectUnauthorized: false },
             });
 
             const entries = await client.list(remoteDir);
@@ -141,7 +141,7 @@ async function listInspirationalLibrary() {
         .map(name => ({
             name,
             url: filePathToDataUrl(path.join(uploadDir, name), getMimeTypeFromName(name)),
-            source: 'inline'
+            source: 'inline',
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -153,7 +153,7 @@ function normalizeLibraryImages(images) {
         .map(item => ({
             name: item.name || extractFilenameFromUrl(item.url),
             url: String(item.url).trim(),
-            source: item.source || 'db'
+            source: item.source || 'db',
         }))
         .filter(item => {
             if (!item.url || seen.has(item.url)) return false;
@@ -188,7 +188,7 @@ async function saveInspirationalLibraryToDb(images) {
         .from(STATE_TABLE)
         .upsert(
             { key: INSPIRATIONAL_LIBRARY_KEY, value: normalized, updated_at: new Date().toISOString() },
-            { onConflict: 'key' }
+            { onConflict: 'key' },
         );
 
     if (error) {
@@ -210,7 +210,7 @@ async function ensureStorageBucket() {
     const { error: createError } = await client.storage.createBucket(STORAGE_BUCKET, {
         public: true,
         fileSizeLimit: 10 * 1024 * 1024,
-        allowedMimeTypes: ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml']
+        allowedMimeTypes: ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml'],
     });
     if (createError && !/already exists/i.test(createError.message || '')) {
         throw new Error(createError.message);
@@ -227,7 +227,7 @@ async function uploadInspirationalBufferToSupabase(buffer, filename, contentType
         .from(STORAGE_BUCKET)
         .upload(objectPath, buffer, {
             contentType: contentType || getMimeTypeFromName(safeName),
-            upsert: false
+            upsert: false,
         });
 
     if (uploadError) {
@@ -242,7 +242,7 @@ async function uploadInspirationalBufferToSupabase(buffer, filename, contentType
     return {
         publicUrl: data.publicUrl,
         objectPath,
-        filename: safeName
+        filename: safeName,
     };
 }
 
@@ -253,7 +253,7 @@ async function listSupabaseInspirationalLibrary() {
     await ensureStorageBucket();
     const { data, error } = await client.storage.from(STORAGE_BUCKET).list('inspirational', {
         limit: 200,
-        sortBy: { column: 'name', order: 'asc' }
+        sortBy: { column: 'name', order: 'asc' },
     });
     if (error) {
         throw new Error(error.message);
@@ -267,7 +267,7 @@ async function listSupabaseInspirationalLibrary() {
             return {
                 name: item.name,
                 url: publicData && publicData.publicUrl ? publicData.publicUrl : '',
-                source: 'supabase'
+                source: 'supabase',
             };
         })
         .filter(item => item.url);
@@ -324,7 +324,7 @@ router.delete('/inspirational-library', async (req, res) => {
                     user: ftp.user,
                     password: ftp.password,
                     secure: true,
-                    secureOptions: { rejectUnauthorized: false }
+                    secureOptions: { rejectUnauthorized: false },
                 });
                 await client.remove(`${remoteDir}/${filename}`);
             } finally {
@@ -373,7 +373,7 @@ router.post('/search', async (req, res) => {
         const response = await fetch(url, {
             headers: {
                 'X-Freepik-API-Key': API_KEY,
-                'Accept-Language': 'en-US'
+                'Accept-Language': 'en-US',
             }
         });
 
@@ -391,13 +391,13 @@ router.post('/search', async (req, res) => {
             title: item.name || 'Icon',
             // Icons have 'thumbnails' array. Usually index 0 is best for preview.
             preview: item.thumbnails && item.thumbnails[0] ? item.thumbnails[0].url : '',
-            download: item.thumbnails && item.thumbnails[0] ? item.thumbnails[0].url : ''
+            download: item.thumbnails && item.thumbnails[0] ? item.thumbnails[0].url : '',
         }));
 
         res.json({
             success: true,
             page,
-            images
+            images,
         });
 
     } catch (error) {
@@ -471,11 +471,11 @@ router.post('/upload-article', uploadMiddleware.single('image'), async (req, res
                 user: ftpUser,
                 password: ftpPass,
                 secure: true,
-                secureOptions: { rejectUnauthorized: false }
+                secureOptions: { rejectUnauthorized: false },
             });
 
             await client.ensureDir(remoteDir);
-            await client.uploadFrom(localPath, `${remoteDir}/${filename}`);
+            await client.uploadFrom(localPath, filename);
             console.log(`FTP upload OK (article): ${remoteDir}/${filename}`);
 
             const publicUrl = publicUrlBase ? `${publicUrlBase}/${filename}` : localUrl;
@@ -560,12 +560,12 @@ router.post('/publish-to-purablis', async (req, res) => {
                 user: ftpUser,
                 password: ftpPass,
                 secure: true,
-                secureOptions: { rejectUnauthorized: false }
+                secureOptions: { rejectUnauthorized: false },
             });
 
             const { remoteDir, publicUrlBase } = getRemotePath();
             await client.ensureDir(remoteDir);
-            await client.uploadFrom(localPath, `${remoteDir}/${filename}`);
+            await client.uploadFrom(localPath, filename);
             console.log(`FTP upload OK (publish): ${remoteDir}/${filename}`);
 
             const publicUrl = publicUrlBase ? `${publicUrlBase}/${filename}` : `/uploads/${filename}`;
@@ -619,7 +619,7 @@ router.post('/publish-inspirational-url', async (req, res) => {
             'image/png': '.png',
             'image/gif': '.gif',
             'image/webp': '.webp',
-            'image/svg+xml': '.svg'
+            'image/svg+xml': '.svg',
         }[contentType.toLowerCase()] || '.png');
         const base = path.basename(pathname, path.extname(pathname)).replace(/[^a-zA-Z0-9.-]/g, '_');
         const filename = (base && base.length > 2 ? base : `insp-${Date.now()}`) + ext;

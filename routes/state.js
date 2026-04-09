@@ -49,7 +49,7 @@ router.get('/diagnostic', async (req, res) => {
         table: TABLE,
         initError: supabaseInitError || null,
         dbError: dbError || null,
-        sessionsCount
+        sessionsCount,
     });
 });
 
@@ -103,7 +103,7 @@ router.post('/', async (req, res) => {
             .from(TABLE)
             .upsert(
                 { key, value, updated_at: new Date().toISOString() },
-                { onConflict: 'key' }
+                { onConflict: 'key' },
             );
 
         if (error) {

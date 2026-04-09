@@ -61,7 +61,7 @@ const cleanArticleData = (row, index) => {
         image: imageUrl || null,
         imageSearchQuery: '',
         isValid: true,
-        selected: true
+        selected: true,
     };
 };
 
@@ -77,9 +77,9 @@ const verifyAndAnalyzeUrl = async (url) => {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9'
+                'Accept-Language': 'en-US,en;q=0.9',
             },
-            signal: controller.signal
+            signal: controller.signal,
         });
         clearTimeout(timeout);
 
@@ -266,7 +266,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         if (articles.length === 0) {
             return res.status(400).json({
                 success: false,
-                error: 'No articles found. Ensure the sheet has a header row and columns like Title, URL (or Article, Link). Download the template for the expected format.'
+                error: 'No articles found. Ensure the sheet has a header row and columns like Title, URL (or Article, Link). Download the template for the expected format.',
             });
         }
 
@@ -276,7 +276,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
             newsletterName,
             source: 'excel',
             count: articles.length,
-            articles
+            articles,
         });
     } catch (error) {
         console.error('Error processing Excel:', error);
@@ -382,7 +382,7 @@ const extractJSON = (text) => {
                 title: titles[i],
                 url: urls[i],
                 description: '',
-                date: dates[i] || ''
+                date: dates[i] || '',
             });
         }
         return articles;
@@ -443,7 +443,7 @@ router.post('/search', async (req, res) => {
                  success: true,
                  articles: [
                      { title: "Mock Article 1", description: "This is a test article.", url: "https://example.com/1", category: "MED" },
-                     { title: "Mock Article 2", description: "Another test article.", url: "https://example.com/2", category: "THC" }
+                     { title: "Mock Article 2", description: "Another test article.", url: "https://example.com/2", category: "THC" },
                  ]
              });
         }
@@ -471,7 +471,7 @@ Example format:
             try {
                 const geminiModel = genAI.getGenerativeModel({
                     model: apiModel,
-                    tools: [{ googleSearch: {} }]
+                    tools: [{ googleSearch: {} }],
                 });
 
                 const geminiPrompt = `${systemPrompt}\n\nUser request: ${prompt}`;
@@ -490,15 +490,15 @@ Example format:
                 max_tokens: 8000,
                 system: systemPrompt,
                 messages: [
-                    { role: "user", content: prompt }
+                    { role: "user", content: prompt },
                 ],
                 tools: [
                     {
                         type: "web_search_20250305",
                         name: "web_search",
-                        max_uses: 10
-                    }
-                ]
+                        max_uses: 10,
+                    },
+                ],
             });
 
             // Combine all text blocks
@@ -586,7 +586,7 @@ Example format:
             newsletterName,
             source: 'ai',
             count: finalArticles.length,
-            articles: finalArticles
+            articles: finalArticles,
         });
 
     } catch (error) {
@@ -633,8 +633,8 @@ router.post('/modify', async (req, res) => {
                 max_tokens: 8000,
                 system: systemPrompt,
                 messages: [
-                    { role: "user", content: userMessage }
-                ]
+                    { role: "user", content: userMessage },
+                ],
             });
             content = message.content[0].text;
         }
@@ -646,7 +646,7 @@ router.post('/modify', async (req, res) => {
             console.error("Failed to parse AI JSON response:", content);
             return res.status(500).json({
                 error: "AI needs more detail before it can continue.",
-                details: String(content || '').trim()
+                details: String(content || '').trim(),
             });
         }
 
@@ -654,7 +654,7 @@ router.post('/modify', async (req, res) => {
 
         res.json({
             success: true,
-            articles: modifiedArticles
+            articles: modifiedArticles,
         });
 
     } catch (error) {
@@ -718,7 +718,7 @@ If some links could not be accessed, briefly note that in one short line.`;
             title: a.title || '',
             url: a.url || '',
             date: a.date || '',
-            description: a.description || ''
+            description: a.description || '',
         }));
 
         const fetchedArticles = await Promise.all(articleInputs.map(async (article) => {
@@ -727,7 +727,7 @@ If some links could not be accessed, briefly note that in one short line.`;
                 ...article,
                 accessible: !!inspected.isValid,
                 readable: !!inspected.isReadable,
-                content: inspected.content || ''
+                content: inspected.content || '',
             };
         }));
 
@@ -739,7 +739,7 @@ If some links could not be accessed, briefly note that in one short line.`;
             description: article.description,
             accessible: article.accessible,
             readable: article.readable,
-            content: article.content ? article.content.substring(0, 6000) : ''
+            content: article.content ? article.content.substring(0, 6000) : '',
         }));
 
         const userMessage = [
@@ -748,7 +748,7 @@ If some links could not be accessed, briefly note that in one short line.`;
             prompt,
             '',
             'Fetched articles:',
-            JSON.stringify(articlePayload, null, 2)
+            JSON.stringify(articlePayload, null, 2),
         ].join('\n');
 
         let content = '';
@@ -763,8 +763,8 @@ If some links could not be accessed, briefly note that in one short line.`;
                 max_tokens: 4000,
                 system: systemPrompt,
                 messages: [
-                    { role: "user", content: userMessage }
-                ]
+                    { role: "user", content: userMessage },
+                ],
             });
             content = message.content[0].text;
         }
@@ -803,7 +803,7 @@ router.post('/generate-subjects', async (req, res) => {
                 title: article.title || '',
                 url: article.url || '',
                 date: article.date || '',
-                description: article.description || ''
+                description: article.description || '',
             }));
         });
 
@@ -822,7 +822,7 @@ Return only valid JSON with keys MED, THC, CBD, INV.`;
             String(prompt).trim(),
             '',
             'Category articles:',
-            JSON.stringify(normalized, null, 2)
+            JSON.stringify(normalized, null, 2),
         ].join('\n');
 
         const requestedModel = String(model || '').toLowerCase();
@@ -848,8 +848,8 @@ Return only valid JSON with keys MED, THC, CBD, INV.`;
                 MED: String(subjects.MED || '').trim(),
                 THC: String(subjects.THC || '').trim(),
                 CBD: String(subjects.CBD || '').trim(),
-                INV: String(subjects.INV || '').trim()
-            }
+                INV: String(subjects.INV || '').trim(),
+            },
         });
     } catch (error) {
         console.error('Error generating subjects:', error);

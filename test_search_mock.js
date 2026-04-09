@@ -1,5 +1,3 @@
-
-
 async function testMockSearch() {
     console.log('Testing Search with "TEST_MOCK_DATA"...');
     try {
@@ -9,12 +7,12 @@ async function testMockSearch() {
             body: JSON.stringify({
                 prompt: 'TEST_MOCK_DATA',
                 newsletterName: 'Test Newsletter',
-                model: 'claude-opus-4-6' 
+                model: 'claude-opus-4-6',
             })
         });
 
         const data = await response.json();
-        
+
         if (data.success) {
             console.log('✅ Mock Search Successful!');
             console.log(`Found ${data.count} articles.`);

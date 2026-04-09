@@ -64,7 +64,7 @@ async function main() {
             .from(TABLE)
             .upsert(
                 { key: 'workspace', value: workspace, updated_at: new Date().toISOString() },
-                { onConflict: 'key' }
+                { onConflict: 'key' },
             );
         if (error) {
             console.error('Failed to restore workspace:', error.message);
@@ -103,14 +103,14 @@ async function main() {
     currentSessions[toSession] = {
         ...source,
         articles: JSON.parse(JSON.stringify(source.articles)),
-        savedAt: new Date().toISOString()
+        savedAt: new Date().toISOString(),
     };
 
     const { error: eu } = await supabase
         .from(TABLE)
         .upsert(
             { key: 'sessions', value: currentSessions, updated_at: new Date().toISOString() },
-            { onConflict: 'key' }
+            { onConflict: 'key' },
         );
     if (eu) {
         console.error('Failed to save session:', eu.message);
@@ -122,8 +122,17 @@ async function main() {
         const { error: ew } = await supabase
             .from(TABLE)
             .upsert(
-                { key: 'workspace', value: { articles: source.articles, archivedArticles: source.archivedArticles || [], inspirationalImages: source.inspirationalImages || [], newsletterContent: source.newsletterContent || {} }, updated_at: new Date().toISOString() },
-                { onConflict: 'key' }
+                {
+                    key: 'workspace',
+                    value: {
+                        articles: source.articles,
+                        archivedArticles: source.archivedArticles || [],
+                        inspirationalImages: source.inspirationalImages || [],
+                        newsletterContent: source.newsletterContent || {},
+                    },
+                    updated_at: new Date().toISOString(),
+                },
+                { onConflict: 'key' },
             );
         if (ew) {
             console.error('Failed to set workspace:', ew.message);

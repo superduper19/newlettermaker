@@ -22,10 +22,10 @@ function getSupabase() {
 
 const TABLE = process.env.SUPABASE_STATE_TABLE || 'newsletter_state';
 const TEMPLATE_FILES = {
-    MED: 'newsletter_feb23_2026_MED.html',
-    THC: 'newsletter_feb23_2026_THC.html',
-    CBD: 'newsletter_feb23_2026_CBD.html',
-    INV: 'newsletter_feb23_2026_INV.html'
+    MED: 'med.html',
+    THC: 'thc.html',
+    CBD: 'cbd.html',
+    INV: 'inv.html',
 };
 
 // POST /api/newsletters — save generated newsletter to DB
@@ -43,7 +43,7 @@ router.post('/', async (req, res) => {
     const key = `newsletter_${String(name).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
     const value = {
         ...generated,
-        savedAt: new Date().toISOString()
+        savedAt: new Date().toISOString(),
     };
 
     try {
@@ -51,7 +51,7 @@ router.post('/', async (req, res) => {
             .from(TABLE)
             .upsert(
                 { key, value, updated_at: new Date().toISOString() },
-                { onConflict: 'key' }
+                { onConflict: 'key' },
             );
 
         if (error) {
@@ -65,7 +65,7 @@ router.post('/', async (req, res) => {
     }
 });
 
-// GET /api/newsletters/template/:category — load default category template from exampleTemplates
+// GET /api/newsletters/template/:category — load default category template from templates
 router.get('/template/:category', (req, res) => {
     const category = String(req.params.category || '').toUpperCase();
     const filename = TEMPLATE_FILES[category];
@@ -74,7 +74,7 @@ router.get('/template/:category', (req, res) => {
         return res.status(400).json({ error: 'Unknown category' });
     }
 
-    const filePath = path.join(__dirname, '../exampleTemplates', filename);
+    const filePath = path.join(__dirname, '../templates', filename);
     if (!fs.existsSync(filePath)) {
         return res.status(404).json({ error: 'Template not found', category, filename });
     }

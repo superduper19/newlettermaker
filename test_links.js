@@ -7,14 +7,14 @@ async function testLinks() {
     const body = {
         prompt: 'marijuana rescheduling DEA',
         newsletterName: 'Test Newsletter',
-        model: 'claude-3-haiku-20240307' // Using a fast model for testing
+        model: 'claude-3-haiku-20240307', // Using a fast model for testing
     };
 
     try {
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
+            body: JSON.stringify(body),
         });
 
         if (!response.ok) {
@@ -26,7 +26,7 @@ async function testLinks() {
 
         const data = await response.json();
         console.log(`Success! Found ${data.count} articles.`);
-        
+
         if (data.articles && data.articles.length > 0) {
             console.log('First article:');
             const first = data.articles[0];
@@ -34,7 +34,7 @@ async function testLinks() {
             console.log(`- URL: ${first.url}`);
             console.log(`- Content Length: ${first.content ? first.content.length : 'N/A'}`);
             console.log(`- Categories: ${first.categories.join(', ')}`);
-            
+
             // Verify URL manually again just to be sure
             console.log(`Verifying URL ${first.url}...`);
             const verifyRes = await fetch(first.url, { method: 'HEAD' });
