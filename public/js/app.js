@@ -1,5 +1,3 @@
-import validateHeadlines from './headline-validator.js';
-
 const GREETING_OPTIONS = Array.from(new Set([
     'Thanks and have a great week',
     'Thanks',

@@ -30,7 +30,7 @@ const WORD_EXCLUSIONS = [
     'with',
 ]
 
-export default function validateHeadlines(headlines) {
+function validateHeadlines(headlines) {
     if (headlines.some(s => validateHeadline(s) === BAD_FORMAT)) {
         return [
             '#d32f2f',
