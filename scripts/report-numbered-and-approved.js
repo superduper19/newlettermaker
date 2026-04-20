@@ -5,18 +5,16 @@
  * Run: node scripts/report-numbered-and-approved.js [path-to-backup.json]
  */
 
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+const fs = require('fs');
+const path = require('path');
 
-const filepath =
-    process.argv[2] ||
-    join(import.meta.dirname, '..', 'backups', 'state-backup-2026-03-09-0242.json');
-if (!existsSync(filepath)) {
+const filepath = process.argv[2] || path.join(__dirname, '..', 'backups', 'state-backup-2026-03-09-0242.json');
+if (!fs.existsSync(filepath)) {
     console.error('File not found:', filepath);
     process.exit(1);
 }
 
-const data = JSON.parse(readFileSync(filepath, 'utf8'));
+const data = JSON.parse(fs.readFileSync(filepath, 'utf8'));
 const categories = ['MED', 'THC', 'CBD', 'INV'];
 
 function getRank(article, cat) {
@@ -62,14 +60,10 @@ function report(label, articles) {
         if (numbered.length === 0) {
             console.log('  (none)');
         } else {
-            numbered.forEach(({ rank, title }) =>
-                console.log(
-                    '  ' +
-                    rank +
-                    '. ' +
-                    (title.length > 72 ? title.slice(0, 69) + '...' : title),
-                ),
-            );
+            numbered.forEach(({
+                                  rank,
+                                  title,
+                              }) => console.log('  ' + rank + '. ' + (title.length > 72 ? title.slice(0, 69) + '...' : title)));
         }
     }
 }

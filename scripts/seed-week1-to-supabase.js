@@ -5,12 +5,10 @@
  * Create table first: run the SQL in supabase/schema.sql in Supabase SQL Editor.
  */
 
-import { createClient } from '@supabase/supabase-js';
-import { config } from 'dotenv';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
-config();
+require('dotenv').config();
+const path = require('path');
+const fs = require('fs');
+const { createClient } = require('@supabase/supabase-js');
 
 // Must be the key/value table (see supabase/schema.sql), not newsletter_articles
 const TABLE = 'newsletter_state';
@@ -123,16 +121,9 @@ const defaultContent = {
 
 async function seedWeek1() {
     const url = process.env.SUPABASE_URL;
-    const key =
-        process.env.SUPABASE_SECRET_KEY ||
-        process.env.SUPABASE_SERVICE_ROLE_KEY ||
-        process.env.SUPABASE_ANON_KEY ||
-        process.env.SUPABASE_PUBLISHABLE_KEY;
+    const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
     if (!url || !key) {
-        throw new Error(
-            'Missing SUPABASE_URL and one of SUPABASE_SECRET_KEY, SUPABASE_PUBLISHABLE_KEY, ' +
-            'SUPABASE_ANON_KEY, or SUPABASE_SERVICE_ROLE_KEY in .env',
-        );
+        throw new Error('Missing SUPABASE_URL and one of SUPABASE_SECRET_KEY, SUPABASE_PUBLISHABLE_KEY, SUPABASE_ANON_KEY, or SUPABASE_SERVICE_ROLE_KEY in .env');
     }
 
     const supabase = createClient(url, key);
@@ -140,12 +131,12 @@ async function seedWeek1() {
 
     // If local upload file exists, optionally upload to Supabase Storage and replace URL
     const uploadsDir = '/tmp/uploads';
-    const localPath = join(uploadsDir, 'upload-1772320410170.jpg');
-    if (existsSync(localPath)) {
+    const localPath = path.join(uploadsDir, 'upload-1772320410170.jpg');
+    if (fs.existsSync(localPath)) {
         try {
             const bucket = 'newsletter-images';
             const fileName = `week1-article-2-${Date.now()}.jpg`;
-            const buf = readFileSync(localPath);
+            const buf = fs.readFileSync(localPath);
             const { data: uploadData, error: uploadErr } = await supabase.storage
                 .from(bucket)
                 .upload(fileName, buf, { contentType: 'image/jpeg', upsert: true });
@@ -158,9 +149,7 @@ async function seedWeek1() {
                     console.log('Uploaded local image to Supabase Storage:', publicUrl);
                 }
             } else {
-                console.warn(
-                    'Storage upload skipped (bucket may not exist):', uploadErr?.message || '',
-                );
+                console.warn('Storage upload skipped (bucket may not exist):', uploadErr?.message || '');
             }
         } catch (e) {
             console.warn('Storage upload skipped:', e.message);
@@ -194,10 +183,7 @@ async function seedWeek1() {
             { onConflict: 'key' },
         );
         if (e1) {
-            throw new Error(
-                'Table may not exist. Run the SQL in supabase/schema.sql in Supabase → SQL Editor. ' +
-                e1.message,
-            );
+            throw new Error('Table may not exist. Run the SQL in supabase/schema.sql in Supabase → SQL Editor. ' + e1.message);
         }
         console.log('Upserted workspace (' + articles.length + ' articles).');
 
@@ -213,7 +199,7 @@ async function seedWeek1() {
     }
 }
 
-export { seedWeek1 };
+module.exports = { seedWeek1 };
 
 if (require.main === module) {
     seedWeek1().catch((e) => {

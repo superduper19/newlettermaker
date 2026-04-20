@@ -4,18 +4,14 @@
  * Example: node scripts/test-publish-image.js https://cdn-icons-png.flaticon.com/128/1234/1234567.png
  * Or: node scripts/test-publish-image.js /uploads/upload-1234567890.png (if file exists)
  */
-
-import { config } from 'dotenv';
-import { Buffer } from 'node:buffer';
-import { request } from 'node:http';
-
-config();
+require('dotenv').config();
+const http = require('http');
 
 const url = process.argv[2] || 'https://cdn-icons-png.flaticon.com/128/1/1234.png';
 const port = process.env.PORT || 5020;
 
 const body = JSON.stringify({ url });
-const req = request({
+const req = http.request({
     hostname: 'localhost',
     port,
     path: '/api/images/publish-to-purablis',

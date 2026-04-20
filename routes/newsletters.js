@@ -1,21 +1,15 @@
-import { createClient } from '@supabase/supabase-js';
-import { Router } from 'express';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
-const router = Router();
+const express = require('express');
+const router = express.Router();
+const fs = require('fs');
+const path = require('path');
 
 let supabase = null;
-
 function getSupabase() {
     if (supabase) return supabase;
     try {
+        const { createClient } = require('@supabase/supabase-js');
         const url = process.env.SUPABASE_URL;
-        const key =
-            process.env.SUPABASE_SECRET_KEY ||
-            process.env.SUPABASE_SERVICE_ROLE_KEY ||
-            process.env.SUPABASE_ANON_KEY ||
-            process.env.SUPABASE_PUBLISHABLE_KEY;
+        const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
         if (url && key) {
             supabase = createClient(url, key);
             return supabase;
@@ -80,13 +74,13 @@ router.get('/template/:category', (req, res) => {
         return res.status(400).json({ error: 'Unknown category' });
     }
 
-    const filePath = join(import.meta.dirname, '../templates', filename);
-    if (!existsSync(filePath)) {
+    const filePath = path.join(__dirname, '../templates', filename);
+    if (!fs.existsSync(filePath)) {
         return res.status(404).json({ error: 'Template not found', category, filename });
     }
 
     try {
-        const html = readFileSync(filePath, 'utf8');
+        const html = fs.readFileSync(filePath, 'utf8');
         res.type('html').send(html);
     } catch (e) {
         console.error('Template load error:', e);
@@ -94,4 +88,4 @@ router.get('/template/:category', (req, res) => {
     }
 });
 
-export default router;
+module.exports = router;

@@ -1,7 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
-import { Router } from 'express';
-
-const router = Router();
+const express = require('express');
+const router = express.Router();
 
 let supabase = null;
 let supabaseInitError = null;
@@ -9,20 +7,15 @@ let supabaseInitError = null;
 function getSupabase() {
     if (supabase) return supabase;
     try {
+        const { createClient } = require('@supabase/supabase-js');
         const url = process.env.SUPABASE_URL;
-        const key =
-            process.env.SUPABASE_SECRET_KEY ||
-            process.env.SUPABASE_SERVICE_ROLE_KEY ||
-            process.env.SUPABASE_ANON_KEY ||
-            process.env.SUPABASE_PUBLISHABLE_KEY;
+        const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
         if (url && key) {
             supabase = createClient(url, key);
             supabaseInitError = null;
             return supabase;
         }
-        supabaseInitError =
-            'Missing SUPABASE_URL or key ' +
-            '(set SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY in Vercel)';
+        supabaseInitError = 'Missing SUPABASE_URL or key (set SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY in Vercel)';
     } catch (e) {
         supabaseInitError = e.message || 'Supabase init failed';
         console.warn('Supabase not configured:', supabaseInitError);
@@ -36,19 +29,13 @@ const TABLE = process.env.SUPABASE_STATE_TABLE || 'newsletter_state';
 // GET /api/state/diagnostic — safe status for debugging (no secrets)
 router.get('/diagnostic', async (req, res) => {
     const url = process.env.SUPABASE_URL;
-    const hasKey = !!(
-        process.env.SUPABASE_SECRET_KEY ||
-        process.env.SUPABASE_SERVICE_ROLE_KEY ||
-        process.env.SUPABASE_ANON_KEY ||
-        process.env.SUPABASE_PUBLISHABLE_KEY
-    );
+    const hasKey = !!(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY);
     const client = getSupabase();
     let dbError = null;
     let sessionsCount = null;
     if (client) {
         try {
-            const { data, error } =
-                await client.from(TABLE).select('key').eq('key', 'sessions').maybeSingle();
+            const { data, error } = await client.from(TABLE).select('key').eq('key', 'sessions').maybeSingle();
             if (error) dbError = error.message;
             else if (data) sessionsCount = 'sessions row exists';
         } catch (e) {
@@ -75,11 +62,7 @@ router.get('/', async (req, res) => {
 
     const client = getSupabase();
     if (!client) {
-        return res.status(503).json({
-            error: 'Database not configured',
-            configured: false,
-            hint: supabaseInitError,
-        });
+        return res.status(503).json({ error: 'Database not configured', configured: false, hint: supabaseInitError });
     }
 
     try {
@@ -112,11 +95,7 @@ router.post('/', async (req, res) => {
 
     const client = getSupabase();
     if (!client) {
-        return res.status(503).json({
-            error: 'Database not configured',
-            configured: false,
-            hint: supabaseInitError,
-        });
+        return res.status(503).json({ error: 'Database not configured', configured: false, hint: supabaseInitError });
     }
 
     try {
@@ -143,4 +122,4 @@ router.get('/config', (req, res) => {
     res.json({ configured: !!getSupabase() });
 });
 
-export default router;
+module.exports = router;

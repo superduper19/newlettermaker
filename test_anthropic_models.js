@@ -1,7 +1,5 @@
-import { config } from 'dotenv';
-import Anthropic from '@anthropic-ai/sdk';
-
-config();
+require('dotenv').config();
+const Anthropic = require('@anthropic-ai/sdk');
 
 const anthropic = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
@@ -21,24 +19,23 @@ async function testModel(modelId) {
         const message = await anthropic.messages.create({
             model: modelId,
             max_tokens: 10,
-            messages: [{ role: 'user', content: 'Hello' }],
+            messages: [{ role: 'user', content: 'Hello' }]
         });
         console.log(`SUCCESS: ${modelId} returned response: ${message.content[0].text.trim()}`);
     } catch (error) {
         console.error(`FAILED: ${modelId} error:`, error.message);
         if (error.status === 404 || (error.error && error.error.type === 'not_found_error')) {
-            console.error(
-                '>>> DIAGNOSIS: 404 Not Found. ' +
-                'API Key may not have access, or model ID is invalid.',
-            );
+            console.error('>>> DIAGNOSIS: 404 Not Found. API Key may not have access, or model ID is invalid.');
         }
     }
 }
 
-(async function runTests() {
+async function runTests() {
     console.log('Starting Anthropic Model Access Test (User Provided IDs)...');
     for (const model of modelsToTest) {
         await testModel(model);
     }
     console.log('\nTest Complete.');
-})();
+}
+
+runTests();

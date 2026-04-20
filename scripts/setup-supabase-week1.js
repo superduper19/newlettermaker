@@ -6,43 +6,27 @@
  * Supabase → SQL Editor, then you run this script again to seed.
  */
 
-import { createClient } from '@supabase/supabase-js';
-import { config } from 'dotenv';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { seedWeek1 } from './seed-week1-to-supabase.js';
-
-config();
+require('dotenv').config();
+const path = require('path');
+const fs = require('fs');
+const { createClient } = require('@supabase/supabase-js');
 
 const TABLE = 'newsletter_state';
-const SCHEMA_PATH = join(import.meta.dirname, '../supabase/schema.sql');
+const SCHEMA_PATH = path.join(__dirname, '../supabase/schema.sql');
 
 async function tableExists(supabase) {
     const { error } = await supabase.from(TABLE).select('key').limit(1).maybeSingle();
-    if (error &&
-        (error.message.includes('Could not find') ||
-            error.message.includes('could not find') ||
-            error.message.includes('does not exist'))) {
+    if (error && (error.message.includes('Could not find') || error.message.includes('could not find') || error.message.includes('does not exist')))
         return false;
-    }
-    if (error) {
-        throw error;
-    }
+    if (error) throw error;
     return true;
 }
 
 async function main() {
     const url = process.env.SUPABASE_URL;
-    const key =
-        process.env.SUPABASE_SECRET_KEY ||
-        process.env.SUPABASE_SERVICE_ROLE_KEY ||
-        process.env.SUPABASE_ANON_KEY ||
-        process.env.SUPABASE_PUBLISHABLE_KEY;
+    const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
     if (!url || !key) {
-        console.error(
-            'Missing SUPABASE_URL and one of SUPABASE_SECRET_KEY, SUPABASE_PUBLISHABLE_KEY, ' +
-            'SUPABASE_ANON_KEY, or SUPABASE_SERVICE_ROLE_KEY in .env',
-        );
+        console.error('Missing SUPABASE_URL and one of SUPABASE_SECRET_KEY, SUPABASE_PUBLISHABLE_KEY, SUPABASE_ANON_KEY, or SUPABASE_SERVICE_ROLE_KEY in .env');
         process.exit(1);
     }
 
@@ -50,11 +34,9 @@ async function main() {
 
     const exists = await tableExists(supabase);
     if (!exists) {
-        const sql = readFileSync(SCHEMA_PATH, 'utf8').replace(/^--.*\n/gm, '').trim();
+        const sql = fs.readFileSync(SCHEMA_PATH, 'utf8').replace(/^--.*\n/gm, '').trim();
         console.log('Create the table in Supabase first:\n');
-        console.log(
-            '1. Open https://supabase.com/dashboard → your project → SQL Editor → New query',
-        );
+        console.log('1. Open https://supabase.com/dashboard → your project → SQL Editor → New query');
         console.log('2. Paste and run this SQL:\n');
         console.log(sql);
         console.log('\n3. Then run this script again: node scripts/setup-supabase-week1.js');
@@ -62,6 +44,7 @@ async function main() {
     }
 
     // Table exists — run the seed
+    const { seedWeek1 } = require('./seed-week1-to-supabase.js');
     await seedWeek1();
     console.log('Week 1 content is now in Supabase. Load "Week 1" in the app to see it.');
 }

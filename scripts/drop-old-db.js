@@ -8,10 +8,8 @@
  *                      e.g. postgresql://postgres.[ref]:[YOUR-PASSWORD]@aws-0-[region].pooler.supabase.com:6543/postgres
  */
 
-import { config } from 'dotenv';
-import { Client } from 'pg';
-
-config();
+require('dotenv').config();
+const { Client } = require('pg');
 
 const SQL = [
     'drop trigger if exists trg_newsletter_articles_updated_at on public.newsletter_articles',
@@ -28,9 +26,7 @@ async function main() {
     if (!url) {
         console.error('Missing SUPABASE_DB_URL (or DATABASE_URL) in .env');
         console.error('');
-        console.error(
-            'Get it from: Supabase Dashboard → Project Settings → Database → Connection string',
-        );
+        console.error('Get it from: Supabase Dashboard → Project Settings → Database → Connection string');
         console.error('Use the "URI" format (Session mode or Direct).');
         process.exit(1);
     }
@@ -40,10 +36,7 @@ async function main() {
         await client.connect();
         for (const q of SQL) {
             await client.query(q);
-            console.log(
-                'OK:',
-                q.split(' on ')[0].split(' if exists ')[1] || q.slice(0, 50) + '...',
-            );
+            console.log('OK:', q.split(' on ')[0].split(' if exists ')[1] || q.slice(0, 50) + '...');
         }
         console.log('');
         console.log('Old app database objects have been deleted.');

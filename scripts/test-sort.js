@@ -54,8 +54,7 @@ const byCbd = [
 byCbd.sort(sortCompare);
 const cbdOrder = byCbd.map(a => a.title + '(CBD=' + (a.ranks && a.ranks.CBD) + ')').join(', ');
 console.log('Test CBD (same MED,THC; different CBD 3,1,Y):', cbdOrder);
-const cbdOk =
-    byCbd[0].ranks.CBD === '1' && byCbd[1].ranks.CBD === '3' && byCbd[2].ranks.CBD === 'Y';
+const cbdOk = byCbd[0].ranks.CBD === '1' && byCbd[1].ranks.CBD === '3' && byCbd[2].ranks.CBD === 'Y';
 console.log(cbdOk ? '  PASS' : '  FAIL');
 
 // Test 2: INV must determine order when MED, THC, CBD equal
@@ -65,11 +64,9 @@ const byInv = [
     { title: 'C', ranks: { MED: 'Y', THC: 'Y', CBD: 'Y', INV: '1' } },
 ];
 byInv.sort(sortCompare);
-const invOrder =
-    byInv.map(a => a.title + '(INV=' + (a.ranks && a.ranks.INV || '') + ')').join(', ');
+const invOrder = byInv.map(a => a.title + '(INV=' + (a.ranks && a.ranks.INV || '') + ')').join(', ');
 console.log('Test INV (same MED,THC,CBD; different INV 2,empty,1):', invOrder);
-const invOk =
-    (byInv[0].ranks.INV === '1') && (byInv[1].ranks.INV === '2') && (byInv[2].ranks.INV === '');
+const invOk = (byInv[0].ranks.INV === '1') && (byInv[1].ranks.INV === '2') && (byInv[2].ranks.INV === '');
 console.log(invOk ? '  PASS' : '  FAIL');
 
 // Test 3: Full multi-key
@@ -79,10 +76,7 @@ const full = [
     { title: 'M', ranks: { MED: 'Y', THC: 'Y', CBD: '2', INV: 'Y' } },
 ];
 full.sort(sortCompare);
-console.log(
-    'Test full order:',
-    full.map(a => `${a.title}(MED=${a.ranks.MED} CBD=${a.ranks.CBD})`).join(', '),
-);
+console.log('Test full order:', full.map(a => `${a.title}(MED=${a.ranks.MED} CBD=${a.ranks.CBD})`).join(', '));
 const fullOk = full[0].title === 'A' && full[1].ranks.CBD === '2' && full[2].ranks.CBD === 'Y';
 console.log(fullOk ? '  PASS' : '  FAIL');
 
@@ -92,14 +86,10 @@ const byThc = [
     { title: 'T2', ranks: { THC: '2' } },
     { title: 'T3', ranks: { THC: '1' } },
 ];
-byThc.sort((a, b) =>
-    rankToSortValue(getRankForSort(a, 'THC')) - rankToSortValue(getRankForSort(b, 'THC'))
-        || (a.title || '').localeCompare(b.title || ''),
-);
+byThc.sort((a, b) => rankToSortValue(getRankForSort(a, 'THC')) - rankToSortValue(getRankForSort(b, 'THC')) || (a.title || '').localeCompare(b.title || ''));
 const thcOrder = byThc.map(a => 'THC=' + (a.ranks && a.ranks.THC)).join(', ');
 console.log('Test THC (2, 1, Y):', thcOrder);
-const thcOk =
-    (byThc[0].ranks.THC === '1') && (byThc[1].ranks.THC === '2') && (byThc[2].ranks.THC === 'Y');
+const thcOk = (byThc[0].ranks.THC === '1') && (byThc[1].ranks.THC === '2') && (byThc[2].ranks.THC === 'Y');
 console.log(thcOk ? '  PASS' : '  FAIL');
 
 console.log('\nDone.');

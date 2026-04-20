@@ -1,11 +1,8 @@
-import { createClient } from '@supabase/supabase-js';
-import { Client } from 'basic-ftp';
-import { Router } from 'express';
-import multer, { diskStorage, memoryStorage } from 'multer';
-import { basename, extname, join } from 'node:path';
-import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
-
-const router = Router();
+const express = require('express');
+const router = express.Router();
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 
 // Freepik API Configuration
 const FREEPIK_ICONS_URL = 'https://api.freepik.com/v1/icons';
@@ -13,26 +10,21 @@ const API_KEY = process.env.FREEPIK_API_KEY;
 
 // Multer disk storage for local image uploads
 const uploadDir = '/tmp/uploads';
-const uploadMiddleware = multer({
-    storage: diskStorage({
-        destination: (req, file, cb) => {
-            if (!existsSync(uploadDir)) {
-                mkdirSync(uploadDir, { recursive: true });
-            }
-            cb(null, uploadDir);
-        },
-        filename: (req, file, cb) => {
-            // Sanitize filename to be safe but preserve original name
-            const originalName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
-            cb(null, originalName);
-        },
-    }),
-    limits: { fileSize: 10 * 1024 * 1024 },
+const diskStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+        // Sanitize filename to be safe but preserve original name
+        const originalName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+        cb(null, originalName);
+    }
 });
-const memoryUploadMiddleware = multer({
-    storage: memoryStorage(),
-    limits: { fileSize: 10 * 1024 * 1024 },
-});
+const uploadMiddleware = multer({ storage: diskStorage, limits: { fileSize: 10 * 1024 * 1024 } });
+const memoryUploadMiddleware = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const STATE_TABLE = process.env.SUPABASE_STATE_TABLE || 'newsletter_state';
 const INSPIRATIONAL_LIBRARY_KEY = 'inspirational_library';
 const STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'newsletter-images';
@@ -50,19 +42,16 @@ function getFtpConfig() {
         host: process.env.GODADDY_FTP_HOST,
         user: process.env.GODADDY_FTP_USER,
         password: process.env.GODADDY_FTP_PASS,
-        port: parseInt(process.env.GODADDY_FTP_PORT || '21'),
+        port: parseInt(process.env.GODADDY_FTP_PORT || '21')
     };
 }
 
 function getSupabase() {
     if (supabase) return supabase;
     try {
+        const { createClient } = require('@supabase/supabase-js');
         const url = process.env.SUPABASE_URL;
-        const key =
-            process.env.SUPABASE_SECRET_KEY ||
-            process.env.SUPABASE_SERVICE_ROLE_KEY ||
-            process.env.SUPABASE_ANON_KEY ||
-            process.env.SUPABASE_PUBLISHABLE_KEY;
+        const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
         if (url && key) {
             supabase = createClient(url, key);
             return supabase;
@@ -80,14 +69,14 @@ function isImageFile(name) {
 function extractFilenameFromUrl(url) {
     try {
         const pathname = new URL(url).pathname;
-        return basename(decodeURIComponent(pathname));
+        return path.basename(decodeURIComponent(pathname));
     } catch (e) {
-        return basename(String(url || ''));
+        return path.basename(String(url || ''));
     }
 }
 
 function getMimeTypeFromName(name, fallback = 'application/octet-stream') {
-    const ext = extname(name || '').toLowerCase();
+    const ext = path.extname(name || '').toLowerCase();
     if (ext === '.png') return 'image/png';
     if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
     if (ext === '.gif') return 'image/gif';
@@ -97,7 +86,7 @@ function getMimeTypeFromName(name, fallback = 'application/octet-stream') {
 }
 
 function filePathToDataUrl(filePath, mimeType) {
-    const buffer = readFileSync(filePath);
+    const buffer = fs.readFileSync(filePath);
     return `data:${mimeType || getMimeTypeFromName(filePath)};base64,${buffer.toString('base64')}`;
 }
 
@@ -106,8 +95,8 @@ function resolveUploadsPathFromUrl(url) {
     const match = value.match(/\/uploads\/([^?#]+)/);
     if (!match) return null;
     const filename = match[1];
-    const filePath = join(uploadDir, filename);
-    if (!existsSync(filePath)) return null;
+    const filePath = path.join(uploadDir, filename);
+    if (!fs.existsSync(filePath)) return null;
     return { filePath, filename };
 }
 
@@ -116,6 +105,7 @@ async function listInspirationalLibrary() {
     const { remoteDir, publicUrlBase } = getRemotePath();
 
     if (ftp.host && ftp.user && ftp.password && publicUrlBase) {
+        const { Client } = require('basic-ftp');
         const client = new Client();
         client.ftp.verbose = false;
         try {
@@ -134,7 +124,7 @@ async function listInspirationalLibrary() {
                 .map(entry => ({
                     name: entry.name,
                     url: `${publicUrlBase}/${entry.name}`,
-                    source: 'ftp',
+                    source: 'ftp'
                 }))
                 .sort((a, b) => a.name.localeCompare(b.name));
         } finally {
@@ -142,17 +132,18 @@ async function listInspirationalLibrary() {
         }
     }
 
-    if (!existsSync(uploadDir)) {
+    if (!fs.existsSync(uploadDir)) {
         return [];
     }
 
-    return readdirSync(uploadDir)
+    return fs.readdirSync(uploadDir)
         .filter(name => isImageFile(name))
         .map(name => ({
             name,
-            url: filePathToDataUrl(join(uploadDir, name), getMimeTypeFromName(name)),
+            url: filePathToDataUrl(path.join(uploadDir, name), getMimeTypeFromName(name)),
             source: 'inline',
-        })).sort((a, b) => a.name.localeCompare(b.name));
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function normalizeLibraryImages(images) {
@@ -163,7 +154,8 @@ function normalizeLibraryImages(images) {
             name: item.name || extractFilenameFromUrl(item.url),
             url: String(item.url).trim(),
             source: item.source || 'db',
-        })).filter(item => {
+        }))
+        .filter(item => {
             if (!item.url || seen.has(item.url)) return false;
             seen.add(item.url);
             return true;
@@ -195,13 +187,10 @@ async function saveInspirationalLibraryToDb(images) {
     const { error } = await client
         .from(STATE_TABLE)
         .upsert(
-            {
-                key: INSPIRATIONAL_LIBRARY_KEY,
-                value: normalized,
-                updated_at: new Date().toISOString(),
-            },
+            { key: INSPIRATIONAL_LIBRARY_KEY, value: normalized, updated_at: new Date().toISOString() },
             { onConflict: 'key' },
         );
+
     if (error) {
         throw new Error(error.message);
     }
@@ -274,8 +263,7 @@ async function listSupabaseInspirationalLibrary() {
         .filter(item => item && item.name)
         .map(item => {
             const objectPath = `inspirational/${item.name}`;
-            const { data: publicData } =
-                client.storage.from(STORAGE_BUCKET).getPublicUrl(objectPath);
+            const { data: publicData } = client.storage.from(STORAGE_BUCKET).getPublicUrl(objectPath);
             return {
                 name: item.name,
                 url: publicData && publicData.publicUrl ? publicData.publicUrl : '',
@@ -323,13 +311,10 @@ router.delete('/inspirational-library', async (req, res) => {
         const ftp = getFtpConfig();
         const { remoteDir, publicUrlBase } = getRemotePath();
 
-        if (ftp.host &&
-            ftp.user &&
-            ftp.password &&
-            publicUrlBase &&
-            url.startsWith(`${publicUrlBase}/`)) {
-            // const expectedPrefix = `${publicUrlBase}/`;
+        if (ftp.host && ftp.user && ftp.password && publicUrlBase && url.startsWith(`${publicUrlBase}/`)) {
+            const expectedPrefix = `${publicUrlBase}/`;
 
+            const { Client } = require('basic-ftp');
             const client = new Client();
             client.ftp.verbose = false;
             try {
@@ -347,9 +332,9 @@ router.delete('/inspirational-library', async (req, res) => {
             }
         }
 
-        const localPath = join(uploadDir, filename);
-        if (existsSync(localPath)) {
-            unlinkSync(localPath);
+        const localPath = path.join(uploadDir, filename);
+        if (fs.existsSync(localPath)) {
+            fs.unlinkSync(localPath);
         }
 
         try {
@@ -383,25 +368,19 @@ router.post('/search', async (req, res) => {
         const fetch = (await import('node-fetch')).default;
 
         // Searching for ICONS specifically (Flaticon)
-        const response =
-            await fetch(
-                FREEPIK_ICONS_URL +
-                `?locale=en-US&page=${page}&limit=9&term=${encodeURIComponent(query)}`,
-                {
-                    headers: {
-                        'X-Freepik-API-Key': API_KEY,
-                        'Accept-Language': 'en-US',
-                    },
-                },
-            );
+        const url = `${FREEPIK_ICONS_URL}?locale=en-US&page=${page}&limit=9&term=${encodeURIComponent(query)}`;
+
+        const response = await fetch(url, {
+            headers: {
+                'X-Freepik-API-Key': API_KEY,
+                'Accept-Language': 'en-US',
+            }
+        });
 
         if (!response.ok) {
             const errorText = await response.text();
             console.error('Freepik/Flaticon API Error:', response.status, errorText);
-            return res.status(response.status).json({
-                error: 'Image search failed',
-                details: errorText,
-            });
+            return res.status(response.status).json({ error: 'Image search failed', details: errorText });
         }
 
         const data = await response.json();
@@ -450,8 +429,7 @@ router.post('/inline-local', (req, res) => {
         urls.forEach((url) => {
             const resolved = resolveUploadsPathFromUrl(url);
             if (!resolved) return;
-            results[String(url)] =
-                filePathToDataUrl(resolved.filePath, getMimeTypeFromName(resolved.filename));
+            results[String(url)] = filePathToDataUrl(resolved.filePath, getMimeTypeFromName(resolved.filename));
         });
         res.json({ success: true, results });
     } catch (error) {
@@ -469,8 +447,7 @@ router.post('/upload-article', uploadMiddleware.single('image'), async (req, res
         const localPath = req.file.path;
         const filename = req.file.filename;
         const localUrl = `/uploads/${filename}`;
-        const inlineUrl =
-            filePathToDataUrl(localPath, req.file.mimetype || getMimeTypeFromName(filename));
+        const inlineUrl = filePathToDataUrl(localPath, req.file.mimetype || getMimeTypeFromName(filename));
 
         const ftpHost = process.env.GODADDY_FTP_HOST;
         const ftpUser = process.env.GODADDY_FTP_USER;
@@ -479,15 +456,10 @@ router.post('/upload-article', uploadMiddleware.single('image'), async (req, res
 
         if (!ftpHost || !ftpUser || !ftpPass) {
             console.warn('GoDaddy FTP not configured — returning inline image data');
-            return res.json({
-                success: true,
-                url: inlineUrl,
-                fallbackUrl: localUrl,
-                published: false,
-                storedInline: true,
-            });
+            return res.json({ success: true, url: inlineUrl, fallbackUrl: localUrl, published: false, storedInline: true });
         }
 
+        const { Client } = require('basic-ftp');
         const client = new Client();
         client.ftp.verbose = true;
 
@@ -511,14 +483,7 @@ router.post('/upload-article', uploadMiddleware.single('image'), async (req, res
             res.json({ success: true, url: publicUrl, published: true });
         } catch (ftpErr) {
             console.error('FTP upload failed:', ftpErr.message);
-            res.json({
-                success: true,
-                url: inlineUrl,
-                fallbackUrl: localUrl,
-                published: false,
-                ftpError: ftpErr.message,
-                storedInline: true,
-            });
+            res.json({ success: true, url: inlineUrl, fallbackUrl: localUrl, published: false, ftpError: ftpErr.message, storedInline: true });
         } finally {
             client.close();
         }
@@ -553,14 +518,14 @@ router.post('/publish-to-purablis', async (req, res) => {
         const uploadsMatch = url.match(/\/uploads\/([^?#]+)/);
         if (url.startsWith('/uploads/') || uploadsMatch) {
             filename = uploadsMatch ? uploadsMatch[1] : url.replace('/uploads/', '');
-            localPath = join('/tmp/uploads', filename);
-            if (!existsSync(localPath)) {
+            localPath = path.join('/tmp/uploads', filename);
+            if (!fs.existsSync(localPath)) {
                 return res.status(404).json({ error: 'Local file not found', path: localPath });
             }
         } else if (url.startsWith('http://') || url.startsWith('https://')) {
             const fetch = (await import('node-fetch')).default;
             const resp = await fetch(url, {
-                headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NewsletterMaker/1.0)' },
+                headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NewsletterMaker/1.0)' }
             });
             if (!resp.ok) throw new Error(`Failed to fetch image: ${resp.status}`);
             const buf = await resp.buffer();
@@ -571,23 +536,20 @@ router.post('/publish-to-purablis', async (req, res) => {
             } catch (e) {
                 // ignore malformed URI
             }
-            const ext = extname(pathname) || '.png';
+            const ext = path.extname(pathname) || '.png';
             // Extract basename and sanitize
-            const base = basename(pathname, ext).replace(/[^a-zA-Z0-9.-]/g, '_');
+            const base = path.basename(pathname, ext).replace(/[^a-zA-Z0-9.-]/g, '_');
             // If base is empty or generic, use timestamp
             filename = (base && base.length > 2) ? `${base}${ext}` : `publish-${Date.now()}${ext}`;
 
-            localPath = join(uploadDir, filename);
-            if (!existsSync(uploadDir)) {
-                mkdirSync(uploadDir, { recursive: true });
-            }
-            writeFileSync(localPath, buf);
+            localPath = path.join(uploadDir, filename);
+            if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+            fs.writeFileSync(localPath, buf);
         } else {
-            return res
-                .status(400)
-                .json({ error: 'Unsupported URL: must be /uploads/... or http(s)://' });
+            return res.status(400).json({ error: 'Unsupported URL: must be /uploads/... or http(s)://' });
         }
 
+        const { Client } = require('basic-ftp');
         const client = new Client();
         client.ftp.verbose = false;
 
@@ -606,10 +568,7 @@ router.post('/publish-to-purablis', async (req, res) => {
             await client.uploadFrom(localPath, filename);
             console.log(`FTP upload OK (publish): ${remoteDir}/${filename}`);
 
-            const publicUrl =
-                publicUrlBase
-                    ? `${publicUrlBase}/${filename}`
-                    : `/uploads/${filename}`;
+            const publicUrl = publicUrlBase ? `${publicUrlBase}/${filename}` : `/uploads/${filename}`;
 
             res.json({ success: true, url: publicUrl, published: true });
         } catch (ftpErr) {
@@ -638,12 +597,10 @@ router.post('/publish-inspirational-url', async (req, res) => {
 
         const fetch = (await import('node-fetch')).default;
         const response = await fetch(url, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NewsletterMaker/1.0)' },
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NewsletterMaker/1.0)' }
         });
         if (!response.ok) {
-            return res
-                .status(400)
-                .json({ error: `Could not fetch image URL (${response.status})` });
+            return res.status(400).json({ error: `Could not fetch image URL (${response.status})` });
         }
 
         const contentType = response.headers.get('content-type') || 'application/octet-stream';
@@ -656,43 +613,30 @@ router.post('/publish-inspirational-url', async (req, res) => {
         let pathname = urlObj.pathname;
         try {
             pathname = decodeURIComponent(pathname);
-        } catch (e) {
-        }
-        const ext = extname(pathname) || ({
+        } catch (e) {}
+        const ext = path.extname(pathname) || ({
             'image/jpeg': '.jpg',
             'image/png': '.png',
             'image/gif': '.gif',
             'image/webp': '.webp',
             'image/svg+xml': '.svg',
         }[contentType.toLowerCase()] || '.png');
-        const base = basename(pathname, extname(pathname)).replace(/[^a-zA-Z0-9.-]/g, '_');
+        const base = path.basename(pathname, path.extname(pathname)).replace(/[^a-zA-Z0-9.-]/g, '_');
         const filename = (base && base.length > 2 ? base : `insp-${Date.now()}`) + ext;
         const uploaded = await uploadInspirationalBufferToSupabase(buf, filename, contentType);
         const publicUrl = uploaded.publicUrl;
         try {
             const existing = await getInspirationalLibraryFromDb();
-            const next = normalizeLibraryImages([...(existing || []), {
-                name: uploaded.filename,
-                url: publicUrl,
-                source: 'supabase',
-            }]);
+            const next = normalizeLibraryImages([...(existing || []), { name: uploaded.filename, url: publicUrl, source: 'supabase' }]);
             await saveInspirationalLibraryToDb(next);
         } catch (dbErr) {
             console.warn('Failed to save inspirational URL publish in DB:', dbErr.message);
         }
 
-        res.json({
-            success: true,
-            url: publicUrl,
-            published: true,
-            filename: uploaded.filename,
-            provider: 'supabase',
-        });
+        res.json({ success: true, url: publicUrl, published: true, filename: uploaded.filename, provider: 'supabase' });
     } catch (error) {
         console.error('Publish inspirational URL error:', error);
-        res
-            .status(500)
-            .json({ error: error.message || 'Failed to publish inspirational image URL' });
+        res.status(500).json({ error: error.message || 'Failed to publish inspirational image URL' });
     }
 });
 
@@ -710,32 +654,16 @@ router.post('/upload-inspirational', memoryUploadMiddleware.single('image'), asy
             return res.status(400).json({ error: 'Uploaded file buffer was empty' });
         }
 
-        const uploaded =
-            await uploadInspirationalBufferToSupabase(
-                buffer,
-                safeName,
-                req.file.mimetype || getMimeTypeFromName(safeName),
-            );
+        const uploaded = await uploadInspirationalBufferToSupabase(buffer, safeName, req.file.mimetype || getMimeTypeFromName(safeName));
         try {
             const existing = await getInspirationalLibraryFromDb();
-            const next =
-                normalizeLibraryImages([...(existing || []), {
-                    name: uploaded.filename,
-                    url: uploaded.publicUrl,
-                    source: 'supabase',
-                }]);
+            const next = normalizeLibraryImages([...(existing || []), { name: uploaded.filename, url: uploaded.publicUrl, source: 'supabase' }]);
             await saveInspirationalLibraryToDb(next);
         } catch (dbErr) {
             console.warn('Failed to save inspirational upload in DB:', dbErr.message);
         }
 
-        res.json({
-            success: true,
-            url: uploaded.publicUrl,
-            published: true,
-            provider: 'supabase',
-            filename: uploaded.filename,
-        });
+        res.json({ success: true, url: uploaded.publicUrl, published: true, provider: 'supabase', filename: uploaded.filename });
 
     } catch (error) {
         console.error('Inspirational Upload Error:', error);
@@ -743,4 +671,4 @@ router.post('/upload-inspirational', memoryUploadMiddleware.single('image'), asy
     }
 });
 
-export default router;
+module.exports = router;

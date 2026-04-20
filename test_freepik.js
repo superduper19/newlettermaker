@@ -1,11 +1,9 @@
-import { config } from 'dotenv';
-
-config();
+require('dotenv').config();
 
 const API_KEY = process.env.FREEPIK_API_KEY;
 const QUERY = 'cannabis'; // Use a relevant query
 
-(async function testFreepik() {
+async function testFreepik() {
     console.log('Testing Freepik API...');
 
     // Check if fetch is available globally
@@ -46,11 +44,11 @@ const QUERY = 'cannabis'; // Use a relevant query
             const data = await res.json();
             console.log(`Found ${data.data.length} icons.`);
             // Inspect structure
-            if (data.data.length > 0) {
-                console.log('Sample Icon:', JSON.stringify(data.data[0].images, null, 2));
-            }
+            if (data.data.length > 0) console.log('Sample Icon:', JSON.stringify(data.data[0].images, null, 2));
         }
     } catch (e) {
         console.error(e);
     }
-})();
+}
+
+testFreepik();

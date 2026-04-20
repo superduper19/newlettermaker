@@ -1,5 +1,3 @@
-import validateHeadlines from './headline-validator.js';
-
 const GREETING_OPTIONS = Array.from(new Set([
     'Thanks and have a great week',
     'Thanks',
@@ -131,14 +129,8 @@ function normalizeSummaryRules(value) {
     return value;
 }
 
-const LEGACY_DEFAULT_SUBJECT_PROMPT =
-    'From the top 3 articles for each 4 category, create a small Clicky subject by suitable emojis. ' +
-    'Keep emojis first then subjects with space and don\'t use "|" in between. ' +
-    'Same articles should have same subjects.';
-const DEFAULT_SUBJECT_PROMPT =
-    'From the top 3 articles for each 4 category, create a small Clicky subject by suitable emojis. ' +
-    'Keep emojis first then subjects with space and don\'t use "|" in between. ' +
-    'Same articles should have same subjects.';
+const LEGACY_DEFAULT_SUBJECT_PROMPT = "From the top 3 articles for each 4 category, Create a small Clicky subject by suitable Emojis. Keep Emojis first then subjects with space and don't use \"|\" in between. Same articles should have same Subjects.";
+const DEFAULT_SUBJECT_PROMPT = "From the top 3 articles for each 4 category, Create a small Clicky subject by suitable Emojis. Keep Emojis first then subjects with space and don't use \"|\" in between. Same articles should have same Subjects.";
 
 // Global State
 let articles = [];
@@ -203,10 +195,7 @@ function buildWorkspaceState() {
 function persistWorkspaceLocal(state) {
     const nextState = state || buildWorkspaceState();
     localStorage.setItem('newsletter_articles', JSON.stringify(nextState));
-    localStorage.setItem(
-        INSPIRATIONAL_LIBRARY_CACHE_KEY,
-        JSON.stringify(nextState.inspirationalLibraryImages || []),
-    );
+    localStorage.setItem(INSPIRATIONAL_LIBRARY_CACHE_KEY, JSON.stringify(nextState.inspirationalLibraryImages || []));
 }
 
 function normalizeSubjectPrompt(prompt) {
@@ -236,22 +225,18 @@ function applyWorkspaceState(state, { mergeLibrary = false } = {}) {
     archivedArticles = Array.isArray(value.archivedArticles) ? value.archivedArticles : [];
     laterCoolArticles = Array.isArray(value.laterCoolArticles) ? value.laterCoolArticles : [];
     inspirationalImages = Array.isArray(value.inspirationalImages) ? value.inspirationalImages : [];
-    confirmationInspirationalImage =
-        typeof value.confirmationInspirationalImage === 'string'
-            ? value.confirmationInspirationalImage
-            : '';
+    confirmationInspirationalImage = typeof value.confirmationInspirationalImage === 'string' ? value.confirmationInspirationalImage : '';
     if (Array.isArray(value.inspirationalLibraryImages)) {
         inspirationalLibraryImages = value.inspirationalLibraryImages;
     } else if (!mergeLibrary) {
         inspirationalLibraryImages = [];
     }
-    const nc =
-        value.newsletterContent || {
-            MED: { intro: '', outro: '' },
-            THC: { intro: '', outro: '' },
-            CBD: { intro: '', outro: '' },
-            INV: { intro: '', outro: '' },
-        };
+    const nc = value.newsletterContent || {
+        MED: { intro: '', outro: '' },
+        THC: { intro: '', outro: '' },
+        CBD: { intro: '', outro: '' },
+        INV: { intro: '', outro: '' },
+    };
     newsletterContent = {
         ...nc,
         templates: nc.templates || { MED: '', THC: '', CBD: '', INV: '' },
@@ -322,23 +307,18 @@ async function convertLocalUploadUrlsForSharing() {
         return data.results && data.results[str] ? data.results[str] : value;
     };
 
-    articles =
-        articles.map((article) => ({
-            ...article,
-            image: mapUrl(article.image),
-            originalImageUrl: mapUrl(article.originalImageUrl),
-            publishedImageUrl: mapUrl(article.publishedImageUrl),
-            uploadedImageUrl: mapUrl(article.uploadedImageUrl),
-        }));
+    articles = articles.map((article) => ({
+        ...article,
+        image: mapUrl(article.image),
+        originalImageUrl: mapUrl(article.originalImageUrl),
+        publishedImageUrl: mapUrl(article.publishedImageUrl),
+        uploadedImageUrl: mapUrl(article.uploadedImageUrl),
+    }));
     inspirationalImages = inspirationalImages.map(mapUrl);
-    inspirationalLibraryImages =
-        inspirationalLibraryImages.map((item) =>
-            item && item.url
-                ? {
-                    ...item,
-                    url: mapUrl(item.url),
-                } : item,
-        );
+    inspirationalLibraryImages = inspirationalLibraryImages.map((item) => item && item.url ? {
+        ...item,
+        url: mapUrl(item.url),
+    } : item);
 }
 
 async function parseJsonResponse(res, fallbackMessage) {
@@ -349,10 +329,7 @@ async function parseJsonResponse(res, fallbackMessage) {
     const text = await res.text();
     const looksLikeHtml = /^\s*<!doctype html/i.test(text) || /^\s*<html/i.test(text);
     if (looksLikeHtml) {
-        throw new Error(
-            fallbackMessage ||
-            'Server returned HTML instead of JSON. Restart the app server and try again.',
-        );
+        throw new Error(fallbackMessage || 'Server returned HTML instead of JSON. Restart the app server and try again.');
     }
     throw new Error(fallbackMessage || 'Server did not return JSON.');
 }
@@ -425,20 +402,15 @@ window.updateStateHintFromDiagnostic = async function () {
         }
         showWithClass(hintEl, 'block');
         if (!res.ok) {
-            textEl.textContent =
-                'Cannot reach server. Check deployment and try Refresh from server.';
+            textEl.textContent = 'Cannot reach server. Check deployment and try Refresh from server.';
             return;
         }
         if (!d.hasUrl) {
-            textEl.textContent =
-                'Server: SUPABASE_URL is not set in Vercel → Settings → Environment Variables. ' +
-                'Add it and redeploy.';
+            textEl.textContent = 'Server: SUPABASE_URL is not set in Vercel → Settings → Environment Variables. Add it and redeploy.';
             return;
         }
         if (!d.hasKey) {
-            textEl.textContent =
-                'Server: No Supabase key set. Add SUPABASE_SECRET_KEY ' +
-                '(or SUPABASE_SERVICE_ROLE_KEY) in Vercel → Environment Variables, then redeploy.';
+            textEl.textContent = 'Server: No Supabase key set. Add SUPABASE_SECRET_KEY (or SUPABASE_SERVICE_ROLE_KEY) in Vercel → Environment Variables, then redeploy.';
             return;
         }
         if (d.initError) {
@@ -446,22 +418,13 @@ window.updateStateHintFromDiagnostic = async function () {
             return;
         }
         if (d.dbError) {
-            textEl.textContent =
-                'DB error: ' +
-                d.dbError +
-                ' (table: ' +
-                (d.table || 'newsletter_state') +
-                '). Check Supabase table exists and RLS allows read.';
+            textEl.textContent = 'DB error: ' + d.dbError + ' (table: ' + (d.table || 'newsletter_state') + '). Check Supabase table exists and RLS allows read.';
             return;
         }
-        textEl.textContent =
-            'No sessions in database yet. Click Refresh from server after saving Week 1 from the ' +
-            'app or running the upload script.';
+        textEl.textContent = 'No sessions in database yet. Click Refresh from server after saving Week 1 from the app or running the upload script.';
     } catch (e) {
         showWithClass(hintEl, 'block');
-        textEl.textContent =
-            'Cannot reach /api/state. Is the server running? On Vercel, ensure the app is ' +
-            'deployed with the Express server (see docs).';
+        textEl.textContent = 'Cannot reach /api/state. Is the server running? On Vercel, ensure the app is deployed with the Express server (see docs).';
     }
 };
 
@@ -528,10 +491,7 @@ function saveState() {
 
 // Clear State
 window.clearWorkspace = () => {
-    if (confirm(
-        'Are you sure you want to clear all articles and start fresh? ' +
-        'This cannot be undone.',
-    )) {
+    if (confirm('Are you sure you want to clear all articles and start fresh? This cannot be undone.')) {
         articles = [];
         inspirationalImages = [];
         newsletterContent = {
@@ -596,12 +556,7 @@ window.toggleAllArticles = (select) => {
 };
 
 window.toggleAllImagePublish = (select) => {
-    const relevant =
-        articles.filter(a =>
-            (a.categories && a.categories.length > 0) ||
-            a.status === 'COOL FINDS' ||
-            a.status === 'M',
-        );
+    const relevant = articles.filter(a => (a.categories && a.categories.length > 0) || a.status === 'COOL FINDS' || a.status === 'M');
     relevant.forEach(a => {
         a.publishImage = select;
     });
@@ -619,12 +574,8 @@ window.renderImagesView = () => {
     }
 
     const relevantArticles = articles
-        .filter(a =>
-            a.selected !== false &&
-            ((a.categories && a.categories.length > 0) ||
-                a.status === 'COOL FINDS' ||
-                a.status === 'M'),
-        ).slice();
+        .filter(a => a.selected !== false && ((a.categories && a.categories.length > 0) || a.status === 'COOL FINDS' || a.status === 'M'))
+        .slice();
 
     if (imageViewSortOrder === 'az' || imageViewSortOrder === 'za') {
         const direction = imageViewSortOrder === 'za' ? -1 : 1;
@@ -644,33 +595,19 @@ window.renderImagesView = () => {
     }
 
     if (relevantArticles.length === 0) {
-        list.innerHTML =
-            '<div class="p-7.5 text-center text-[#777]">' +
-            '   No selected articles are ready for Image View yet. ' +
-            '   Check the articles you want in Article View and assign categories first.' +
-            '</div>';
+        list.innerHTML = '<div class="p-7.5 text-center text-[#777]">No selected articles are ready for Image View yet. Check the articles you want in Article View and assign categories first.</div>';
         return;
     }
 
     // Table header
-    list.innerHTML =
-        `<div class="img-table-header">
+    list.innerHTML = `
+        <div class="img-table-header">
             <div class="img-col-select img-header-select">
                 <div class="header-label">Publish</div>
                 <div class="header-inline-actions">
-                    <button
-                        type="button"
-                        class="header-link-btn"
-                        onclick="toggleAllImagePublish(true)">
-                        All
-                    </button>
+                    <button type="button" class="header-link-btn" onclick="toggleAllImagePublish(true)">All</button>
                     <span>/</span>
-                    <button
-                        type="button"
-                        class="header-link-btn"
-                        onclick="toggleAllImagePublish(false)">
-                        None
-                    </button>
+                    <button type="button" class="header-link-btn" onclick="toggleAllImagePublish(false)">None</button>
                 </div>
             </div>
             <div class="img-col-article"><div class="header-label">Article</div></div>
@@ -682,7 +619,8 @@ window.renderImagesView = () => {
             <div class="img-col-selected"><div class="header-label">Selected</div></div>
             <div class="img-col-results"><div class="header-label">Results</div></div>
             <div class="img-col-actions"><div class="header-label">Actions</div></div>
-        </div>`;
+        </div>
+    `;
 
     relevantArticles.forEach((article) => {
         const originalIndex = articles.indexOf(article);
@@ -692,23 +630,13 @@ window.renderImagesView = () => {
             article.imageSearchQuery = words.slice(0, 2).join(' ');
         }
 
-        const selectedImageHtml =
-            article.image
-                ? `<div class="selected-image-container">
-                    <img
-                        src="${article.image}"
-                        class="img-fluid max-h-30"
-                        onerror="this.onerror = null; this.src = '${article.originalImageUrl || ''}'; this.parentElement.classList.add('img-fallback');">
-                    <button class="btn-remove-image" onclick="removeImage(${originalIndex})">
-                        &times;
-                    </button>
-                    ${
-                    article.image.includes('purablis.com')
-                        ? '<span class="badge-published" title="Published">P</span>'
-                        : ''
-                }
+        const selectedImageHtml = article.image
+            ? `<div class="selected-image-container">
+                    <img src="${article.image}" class="img-fluid max-h-30" onerror="this.onerror=null;this.src='${article.originalImageUrl || ''}';this.parentElement.classList.add('img-fallback');">
+                    <button class="btn-remove-image" onclick="removeImage(${originalIndex})">×</button>
+                    ${article.image.includes('purablis.com') ? '<span class="badge-published" title="Published">P</span>' : ''}
                 </div>`
-                : `<div class="no-image-placeholder">No Image</div>`;
+            : `<div class="no-image-placeholder">No Image</div>`;
 
         const gridId = `grid-${originalIndex}`;
 
@@ -723,29 +651,19 @@ window.renderImagesView = () => {
             </div>`;
         }).join('');
 
-        if (article.publishImage === undefined) {
-            article.publishImage = !!article.image;
-        }
+        if (article.publishImage === undefined) article.publishImage = !!article.image;
 
-        const rowHtml =
-            `<div class="img-table-row">
+        const rowHtml = `
+            <div class="img-table-row">
                 <div class="img-col-select flex items-center justify-center pt-2">
-                    <input
-                        type="checkbox"
-                        ${article.publishImage ? 'checked' : ''}
-                        onchange="updateArticleField(${originalIndex}, 'publishImage', this.checked)">
+                    <input type="checkbox" ${article.publishImage ? 'checked' : ''} onchange="updateArticleField(${originalIndex}, 'publishImage', this.checked)">
                 </div>
                 <div class="img-col-article">
                     <textarea
                         rows="2"
                         onchange="updateArticleField(${originalIndex}, 'title', this.value)"
                         class="title-edit font-[inherit] text-[0.9rem]">${article.title}</textarea>
-                    <a
-                        href="${article.url}"
-                        target="_blank"
-                        class="article-link-sm">
-                        ${article.url}
-                    </a>
+                    <a href="${article.url}" target="_blank" class="article-link-sm">${article.url}</a>
                 </div>
                 ${catInputs}
                 <div class="img-col-search">
@@ -755,25 +673,12 @@ window.renderImagesView = () => {
                             id="img-search-input-${originalIndex}"
                             value="${article.imageSearchQuery}"
                             placeholder="Keyword..."
-                            class="form-control h-8 py-1 px-px text-sm">
-                        <button
-                            class="btn btn-sm btn-primary whitespace-nowrap"
-                            onclick="searchArticleImages(${originalIndex})">
-                            Search
-                        </button>
+                            class="form-control h-8 py-1 px-px text-[0.85rem]">
+                        <button class="btn btn-sm btn-primary whitespace-nowrap" onclick="searchArticleImages(${originalIndex})">Search</button>
                     </div>
                     <div class="border-t border-[#eee] pt-1.5">
-                        <input
-                            type="file"
-                            accept="image/*"
-                            id="img-upload-input-${originalIndex}"
-                            class="hidden"
-                            onchange="uploadArticleImage(${originalIndex}, this)">
-                        <label
-                            for="img-upload-input-${originalIndex}"
-                            class="btn btn-sm btn-secondary cursor-pointer m-0 text-[0.78rem] py-1 px-2.5">
-                            Upload File
-                        </label>
+                        <input type="file" accept="image/*" id="img-upload-input-${originalIndex}" class="hidden" onchange="uploadArticleImage(${originalIndex}, this)">
+                        <label for="img-upload-input-${originalIndex}" class="btn btn-sm btn-secondary cursor-pointer m-0 text-[0.78rem] py-1 px-2.5">Upload File</label>
                     </div>
                 </div>
                 <div class="img-col-selected" id="selected-img-${originalIndex}">
@@ -785,18 +690,11 @@ window.renderImagesView = () => {
                     </div>
                 </div>
                 <div class="img-col-actions">
-                    <button
-                        class="btn btn-sm btn-outline text-[#f57c00] border-[#f57c00] mb-2 w-full"
-                        onclick="archiveArticle(${originalIndex})">
-                        Archive
-                    </button>
-                    <button
-                        class="btn btn-sm btn-outline text-[#d32f2f] border-[#d32f2f] w-full"
-                        onclick="removeArticle(${originalIndex})">
-                        Remove
-                    </button>
+                    <button class="btn btn-sm btn-outline text-[#f57c00] border-[#f57c00] mb-2 w-full" onclick="archiveArticle(${originalIndex})">Archive</button>
+                    <button class="btn btn-sm btn-outline text-[#d32f2f] border-[#d32f2f] w-full" onclick="removeArticle(${originalIndex})">Remove</button>
                 </div>
-            </div>`;
+            </div>
+        `;
         list.innerHTML += rowHtml;
     });
 
@@ -806,22 +704,14 @@ window.renderImagesView = () => {
 function updateImageViewStats() {
     const statsEl = document.getElementById('image-view-stats');
     if (!statsEl) return;
-    const relevantArticles =
-        articles.filter(a =>
-            a.selected !== false &&
-            ((a.categories && a.categories.length > 0) ||
-                a.status === 'COOL FINDS' ||
-                a.status === 'M'),
-        );
+    const relevantArticles = articles.filter(a => a.selected !== false && ((a.categories && a.categories.length > 0) || a.status === 'COOL FINDS' || a.status === 'M'));
     const counts = getSelectedRankCounts();
     let selectedCount = 0;
     relevantArticles.forEach(a => {
         if (a.publishImage !== false) selectedCount++;
     });
     const sessionLabel = currentSessionName
-        ? `<span class="stat-item bg-[#e8eaf6] text-[#283593] font-semibold">
-            ${currentSessionName}
-        </span>`
+        ? `<span class="stat-item bg-[#e8eaf6] text-[#283593] font-semibold">${currentSessionName}</span>`
         : '';
 
     const count = relevantArticles.length;
@@ -829,20 +719,15 @@ function updateImageViewStats() {
         ? 'bg-[#e8f5e9] text-[#1b5e20] font-bold border-2 border-[#4caf50]'
         : 'bg-[#ffebee] text-[#c62828] font-bold border-2 border-[#e57373]';
 
-    statsEl.innerHTML =
-        `${sessionLabel}
-        <span class="stat-item ${countClass}" title="Target is 25 articles">
-            Total: ${count} / 25
-        </span>
-        <span
-            class="stat-item bg-[#e0f7fa] text-[#006064]"
-            title="Articles currently selected for Image View">
-            Selected: ${selectedCount}
-        </span>
+    statsEl.innerHTML = `
+        ${sessionLabel}
+        <span class="stat-item ${countClass}" title="Target is 25 articles">Total: ${count} / 25</span>
+        <span class="stat-item bg-[#e0f7fa] text-[#006064]" title="Articles currently selected for Image View">Selected: ${selectedCount}</span>
         <span class="stat-item bg-[#e3f2fd] text-[#0d47a1]">MED: ${counts.MED}</span>
         <span class="stat-item bg-[#e8f5e9] text-[#1b5e20]">THC: ${counts.THC}</span>
         <span class="stat-item bg-[#fff3e0] text-[#e65100]">CBD: ${counts.CBD}</span>
-        <span class="stat-item bg-[#f3e5f5] text-[#4a148c]">INV: ${counts.INV}</span>`;
+        <span class="stat-item bg-[#f3e5f5] text-[#4a148c]">INV: ${counts.INV}</span>
+    `;
 }
 
 // Search Images
@@ -884,21 +769,11 @@ window.searchArticleImages = async (index) => {
             const navDiv = document.createElement('div');
             navDiv.className = 'img-page-nav';
             const currentPage = article.imagePage || 1;
-            navDiv.innerHTML =
-                `<button
-                    class="btn btn-sm btn-outline"
-                    ${currentPage <= 1 ? 'disabled' : ''}
-                    onclick="changeImagePage(${index}, -1)"
-                    title="Previous">
-                    &larr;
-                </button>
+            navDiv.innerHTML = `
+                <button class="btn btn-sm btn-outline" ${currentPage <= 1 ? 'disabled' : ''} onclick="changeImagePage(${index}, -1)" title="Previous">&larr;</button>
                 <span class="text-[0.8rem] text-[#555]">Page ${currentPage}</span>
-                <button
-                    class="btn btn-sm btn-outline"
-                    onclick="changeImagePage(${index}, 1)"
-                    title="Next">
-                    &rarr;
-                </button>`;
+                <button class="btn btn-sm btn-outline" onclick="changeImagePage(${index}, 1)" title="Next">&rarr;</button>
+            `;
             grid.appendChild(navDiv);
         } else {
             grid.innerHTML = '<div class="grid-placeholder">No images found.</div>';
@@ -912,11 +787,8 @@ window.searchArticleImages = async (index) => {
 window.searchAllArticleImages = async () => {
     const relevantIndexes = articles
         .map((article, index) => ({ article, index }))
-        .filter(({ article }) =>
-            (article.categories && article.categories.length > 0) ||
-            article.status === 'COOL FINDS' ||
-            article.status === 'M',
-        ).map(({ index }) => index);
+        .filter(({ article }) => (article.categories && article.categories.length > 0) || article.status === 'COOL FINDS' || article.status === 'M')
+        .map(({ index }) => index);
 
     if (relevantIndexes.length === 0) {
         return alert('No articles available in Image View.');
@@ -970,13 +842,10 @@ window.selectImage = (index, url) => {
     // Update the "Big Image" box
     const box = document.getElementById(`selected-img-${index}`);
     if (box) {
-        box.innerHTML =
-            `<div class="selected-image-container">
-                <img
-                    src="${url}"
-                    class="img-fluid max-h-37.5"
-                    onerror="this.onerror = null; this.src = '${articles[index].originalImageUrl || ''}'; this.parentElement.classList.add('img-fallback');">
-                <button class="btn-remove-image" onclick="removeImage(${index})">&times;</button>
+        box.innerHTML = `
+            <div class="selected-image-container">
+                    <img src="${url}" class="img-fluid max-h-37.5" onerror="this.onerror=null;this.src='${articles[index].originalImageUrl || ''}';this.parentElement.classList.add('img-fallback');">
+                    <button class="btn-remove-image" onclick="removeImage(${index})">×</button>
             </div>`;
     }
 };
@@ -1057,10 +926,7 @@ async function loadInspirationalLibrary() {
             throw new Error(data.error || 'Failed to load uploaded images');
         }
         inspirationalLibraryImages = data.images || [];
-        localStorage.setItem(
-            INSPIRATIONAL_LIBRARY_CACHE_KEY,
-            JSON.stringify(inspirationalLibraryImages),
-        );
+        localStorage.setItem(INSPIRATIONAL_LIBRARY_CACHE_KEY, JSON.stringify(inspirationalLibraryImages));
     } catch (e) {
         console.error(e);
         if (grid && inspirationalLibraryImages.length === 0) {
@@ -1073,9 +939,7 @@ async function loadInspirationalLibrary() {
 
 window.searchInspirational = async () => {
     const query = document.getElementById('insp-search-query').value;
-    if (!query) {
-        return alert('Please enter a search term');
-    }
+    if (!query) return alert('Please enter a search term');
 
     const grid = document.getElementById('insp-results-grid');
     grid.innerHTML = '<div class="grid-placeholder">Searching...</div>';
@@ -1116,9 +980,7 @@ window.uploadInspirationalImage = async () => {
     const input = document.getElementById('insp-upload-input');
     const btn = document.getElementById('btn-insp-upload');
     const status = document.getElementById('insp-upload-status');
-    if (!input || !input.files || !input.files[0]) {
-        return alert('Choose an image file first.');
-    }
+    if (!input || !input.files || !input.files[0]) return alert('Choose an image file first.');
 
     btn.textContent = 'Uploading...';
     btn.disabled = true;
@@ -1128,14 +990,11 @@ window.uploadInspirationalImage = async () => {
     formData.append('image', input.files[0]);
 
     try {
-        const data =
-            await parseJsonResponse(
-                await fetch('/api/images/upload-inspirational', {
-                    method: 'POST',
-                    body: formData,
-                }),
-                'Upload route did not return JSON. Restart the app server and try again.',
-            );
+        const res = await fetch('/api/images/upload-inspirational', {
+            method: 'POST',
+            body: formData,
+        });
+        const data = await parseJsonResponse(res, 'Upload route did not return JSON. Restart the app server and try again.');
         if (data.success && data.url) {
             if (!isPublicHostedUrl(data.url)) {
                 throw new Error('Upload did not return a public Supabase URL.');
@@ -1145,22 +1004,15 @@ window.uploadInspirationalImage = async () => {
             saveState();
             await loadInspirationalLibrary();
             renderInspirationalView();
-            if (status) {
-                status.textContent =
-                    'Uploaded to Supabase Storage and selected for the newsletter.';
-            }
+            if (status) status.textContent = 'Uploaded to Supabase Storage and selected for the newsletter.';
         } else {
             alert('Upload failed: ' + (data.error || 'Unknown error'));
-            if (status) {
-                status.textContent = 'Upload failed.';
-            }
+            if (status) status.textContent = 'Upload failed.';
         }
     } catch (e) {
         console.error(e);
         alert('Upload failed: ' + (e.message || 'Unknown error'));
-        if (status) {
-            status.textContent = 'Upload failed: ' + (e.message || 'Unknown error');
-        }
+        if (status) status.textContent = 'Upload failed: ' + (e.message || 'Unknown error');
     } finally {
         btn.textContent = 'Upload to Supabase';
         btn.disabled = false;
@@ -1173,30 +1025,21 @@ window.addInspirationalUrl = async () => {
     const btn = document.getElementById('btn-insp-url-upload');
     const status = document.getElementById('insp-upload-status');
     const url = input ? input.value.trim() : '';
-    if (!url) {
-        return alert('Paste an image URL first.');
-    }
+    if (!url) return alert('Paste an image URL first.');
 
     if (btn) {
         btn.disabled = true;
         btn.textContent = 'Uploading...';
     }
-    if (status) {
-        status.textContent = 'Fetching the pasted image and uploading it to Supabase Storage...';
-    }
+    if (status) status.textContent = 'Fetching the pasted image and uploading it to Supabase Storage...';
 
     try {
-        const res =
-            await fetch('/api/images/publish-inspirational-url', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url }),
-            });
-        const data =
-            await parseJsonResponse(
-                res,
-                'URL upload route did not return JSON. Restart the app server and try again.',
-            );
+        const res = await fetch('/api/images/publish-inspirational-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url }),
+        });
+        const data = await parseJsonResponse(res, 'URL upload route did not return JSON. Restart the app server and try again.');
         if (!res.ok || !data.success || !data.url) {
             throw new Error(data.error || 'Failed to upload image URL to Supabase');
         }
@@ -1210,17 +1053,11 @@ window.addInspirationalUrl = async () => {
         await loadInspirationalLibrary();
         renderInspirationalView();
 
-        if (input) {
-            input.value = '';
-        }
-        if (status) {
-            status.textContent = 'Uploaded to Supabase Storage and selected for the newsletter.';
-        }
+        if (input) input.value = '';
+        if (status) status.textContent = 'Uploaded to Supabase Storage and selected for the newsletter.';
     } catch (e) {
         console.error(e);
-        if (status) {
-            status.textContent = 'Upload failed: ' + (e.message || 'Unknown error');
-        }
+        if (status) status.textContent = 'Upload failed: ' + (e.message || 'Unknown error');
         alert('Failed to upload image URL: ' + (e.message || 'Unknown error'));
     } finally {
         if (btn) {
@@ -1268,10 +1105,7 @@ window.deleteInspirationalLibraryImage = async (url) => {
 
         inspirationalImages = inspirationalImages.filter(img => img !== url);
         inspirationalLibraryImages = inspirationalLibraryImages.filter(img => img.url !== url);
-        localStorage.setItem(
-            INSPIRATIONAL_LIBRARY_CACHE_KEY,
-            JSON.stringify(inspirationalLibraryImages),
-        );
+        localStorage.setItem(INSPIRATIONAL_LIBRARY_CACHE_KEY, JSON.stringify(inspirationalLibraryImages));
         saveState();
         await loadInspirationalLibrary();
     } catch (e) {
@@ -1287,8 +1121,7 @@ function renderInspirationalView() {
 
     galleryGrid.innerHTML = '';
     if (inspirationalLibraryImages.length === 0) {
-        galleryGrid.innerHTML =
-            '<div class="grid-placeholder">No uploaded inspirational images yet.</div>';
+        galleryGrid.innerHTML = '<div class="grid-placeholder">No uploaded inspirational images yet.</div>';
     } else {
         inspirationalLibraryImages.forEach(({ url, name }) => {
             const div = document.createElement('div');
@@ -1388,8 +1221,7 @@ function escapeHtml(value) {
 function buildCategoryPrompt(category) {
     const categoryArticles = getSummaryArticlesForCategory(category);
     if (categoryArticles.length === 0) {
-        return `CATEGORY: ${category}\nNo priority-ranked articles (1-4) ` +
-            'currently selected for this category.';
+        return `CATEGORY: ${category}\nNo priority-ranked articles (1-4) currently selected for this category.`;
     }
 
     const articleLines = categoryArticles.map((article, index) => {
@@ -1400,8 +1232,7 @@ function buildCategoryPrompt(category) {
 
     return [
         `CATEGORY: ${category}`,
-        'Use only the priority-ranked article links below as the source set for this category ' +
-        'summary.',
+        'Use only the priority-ranked article links below as the source set for this category summary.',
         'Create a strong 6-7 line newsletter-ready summary for this category.',
         '',
         articleLines,
@@ -1415,10 +1246,7 @@ function mergePromptWithCategoryLinks(existingPrompt, category) {
     const wrappedBlock = `${startMarker}\n${promptBlock}\n${endMarker}`;
     const current = String(existingPrompt || '').trim();
     const markerPattern = new RegExp(`${startMarker}[\\s\\S]*?${endMarker}`, 'm');
-    const brokenBlockPattern = new RegExp(
-        `\\[\\[AUTO_CATEGORY_LINKS_${category}_[\\s\\S]*?(?=\\nhttps?:\\/\\/|\\n[A-Za-z0-9].*https?:\\/\\/|$)`,
-        'g',
-    );
+    const brokenBlockPattern = new RegExp(`\\[\\[AUTO_CATEGORY_LINKS_${category}_[\\s\\S]*?(?=\\nhttps?:\\/\\/|\\n[A-Za-z0-9].*https?:\\/\\/|$)`, 'g');
     const cleaned = current
         .replace(markerPattern, '')
         .replace(brokenBlockPattern, '')
@@ -1479,107 +1307,57 @@ window.renderEditorContent = () => {
 
     const summaryRulesValue = normalizeSummaryRules(newsletterContent.summaryRules);
     const resultValue = content.result || '';
-    const templateValue =
-        (newsletterContent.templates && newsletterContent.templates[currentEditorTab]) ||
-        '';
+    const templateValue = (newsletterContent.templates && newsletterContent.templates[currentEditorTab]) || '';
     const selectedGreeting = newsletterContent.selectedGreeting || DEFAULT_GREETING;
-    const greetingOptionsHtml =
-        GREETING_OPTIONS
-            .map(greeting =>
-                `<option
-                    value="${escapeHtml(greeting)}"
-                    ${greeting === selectedGreeting ? 'selected' : ''}>
-                    ${escapeHtml(greeting)}
-                </option>`,
-            ).join('');
+    const greetingOptionsHtml = GREETING_OPTIONS.map(greeting => `
+        <option value="${escapeHtml(greeting)}" ${greeting === selectedGreeting ? 'selected' : ''}>${escapeHtml(greeting)}</option>
+    `).join('');
     const selectedResults = getSelectedCategoryResults();
     const selectedSummaryHtml = ['MED', 'THC', 'CBD', 'INV'].map(cat => {
         const selectedText = selectedResults[cat] || '';
-        return `<div class="p-3 border border-[#e0e0e0] rounded-lg bg-[#fafafa]">
+        return `
+            <div class="p-3 border border-[#e0e0e0] rounded-lg bg-[#fafafa]">
                 <div class="font-bold">${cat}</div>
-                <textarea
-                    rows="5"
-                    class="form-control text-sm bg-white mt-2 p-2"
-                    oninput="updateSelectedCategoryResult('${cat}', this.value)"
-                    placeholder="No selected ${cat} content yet...">${selectedText}</textarea>
-            </div>`;
+                <textarea rows="5" class="form-control text-[0.85rem] bg-white mt-2 p-2" oninput="updateSelectedCategoryResult('${cat}', this.value)" placeholder="No selected ${cat} content yet...">${selectedText}</textarea>
+            </div>
+        `;
     }).join('');
 
-    container.innerHTML =
-        `<div class="form-group p-3 bg-[#f8f9fa] rounded-lg border border-[#e9ecef] mb-5">
+    container.innerHTML = `
+        <div class="form-group p-3 bg-[#f8f9fa] rounded-lg border border-[#e9ecef] mb-5">
             <label class="font-semibold">Template for ${currentEditorTab}</label>
-            <p class="text-muted text-[0.8rem] mb-2.5">
-                HTML template for this newsletter. Use {{SUMMARY}}, {{ARTICLES_HTML}},
-                {{INSPIRATIONAL_IMAGE}}, {{NEWSLETTER_NAME}} as placeholders.
-            </p>
+            <p class="text-muted text-[0.8rem] mb-2.5">HTML template for this newsletter. Use {{SUMMARY}}, {{ARTICLES_HTML}}, {{INSPIRATIONAL_IMAGE}}, {{NEWSLETTER_NAME}} as placeholders.</p>
             <div class="flex flex-wrap gap-3 items-center mb-2.5">
-                <input
-                    type="file"
-                    id="template-single-input"
-                    accept=".html,.htm"
-                    class="upload-input text-sm">
-                <button class="btn btn-secondary btn-sm"  onclick="uploadSingleTemplate()">
-                    Upload 1 (for ${currentEditorTab})
-                </button>
+                <input type="file" id="template-single-input" accept=".html,.htm" class="upload-input text-[0.85rem]">
+                <button class="btn btn-secondary btn-sm" onclick="uploadSingleTemplate()">Upload 1 (for ${currentEditorTab})</button>
                 <span class="text-[#999]">or</span>
-                <input
-                    type="file"
-                    id="template-batch-input"
-                    accept=".html,.htm"
-                    multiple class="upload-input text-sm">
-                <button class="btn btn-secondary btn-sm" onclick="uploadAllTemplates()">
-                    Upload all 4
-                </button>
+                <input type="file" id="template-batch-input" accept=".html,.htm" multiple class="upload-input text-[0.85rem]">
+                <button class="btn btn-secondary btn-sm" onclick="uploadAllTemplates()">Upload all 4</button>
             </div>
             <div id="template-status" class="text-[0.8rem] text-[#666] mb-2"></div>
-            <textarea
-                id="editor-template"
-                rows="6"
-                class="form-control font-[monospace] text-[0.8rem] bg-white p-2"
-                oninput="updateTemplate('${currentEditorTab}', this.value)"
-                placeholder="Paste or edit HTML template here..."></textarea>
+            <textarea id="editor-template" rows="6" class="form-control font-[monospace] text-[0.8rem] bg-white p-2" oninput="updateTemplate('${currentEditorTab}', this.value)" placeholder="Paste or edit HTML template here..."></textarea>
         </div>
 
         <div class="grid grid-cols-[1fr_300px] gap-5 items-start">
             <div>
                 <div class="form-group">
                     <label class="font-semibold">Prompt</label>
-                    <textarea
-                        id="editor-prompt"
-                        rows="8"
-                        class="form-control font-[monospace] text-[0.9rem] mt-2 p-2"
-                        oninput="updateNewsletterContent('${currentEditorTab}', 'prompt', this.value)">${promptValue}</textarea>
+                    <textarea id="editor-prompt" rows="8" class="form-control font-[monospace] text-[0.9rem] mt-2 p-2" oninput="updateNewsletterContent('${currentEditorTab}', 'prompt', this.value)">${promptValue}</textarea>
                 </div>
 
                 <div class="flex items-center gap-2.5 mt-2 mb-4">
-                    <button
-                        class="btn btn-secondary btn-sm"
-                        onclick="syncCategoryPrompt('${currentEditorTab}')">
-                        Refresh Category Links
-                    </button>
-                    <span class="text-[0.8rem] text-[#777]">
-                        The prompt auto-loads all article links for ${currentEditorTab}.
-                    </span>
+                    <button class="btn btn-secondary btn-sm" onclick="syncCategoryPrompt('${currentEditorTab}')">Refresh Category Links</button>
+                    <span class="text-[0.8rem] text-[#777]">The prompt auto-loads all article links for ${currentEditorTab}.</span>
                 </div>
 
                 <div class="flex items-center gap-4 mb-5 justify-between flex-wrap">
                     <div class="flex items-center gap-4">
                         <label class="flex items-center gap-1.25 cursor-pointer text-[0.9rem]">
-                            <input
-                                type="radio"
-                                id="rules-on-${currentEditorTab}"
-                                name="useRulesGroup-${currentEditorTab}"
-                                ${content.useRules !== false ? 'checked' : ''}
-                                onchange="updateNewsletterContent('${currentEditorTab}', 'useRules', true)">
+                            <input type="radio" id="rules-on-${currentEditorTab}" name="useRulesGroup-${currentEditorTab}" ${content.useRules !== false ? 'checked' : ''} onchange="updateNewsletterContent('${currentEditorTab}', 'useRules', true)">
                             Use Summary Rules
                         </label>
                         <label class="flex items-center gap-1.25 cursor-pointer text-[0.9rem]">
-                            <input
-                                type="radio"
-                                id="rules-off-${currentEditorTab}"
-                                name="useRulesGroup-${currentEditorTab}"
-                                ${content.useRules === false ? 'checked' : ''}
-                                onchange="updateNewsletterContent('${currentEditorTab}', 'useRules', false)">
+                            <input type="radio" id="rules-off-${currentEditorTab}" name="useRulesGroup-${currentEditorTab}" ${content.useRules === false ? 'checked' : ''} onchange="updateNewsletterContent('${currentEditorTab}', 'useRules', false)">
                             Custom (No Rules)
                         </label>
                     </div>
@@ -1592,42 +1370,22 @@ window.renderEditorContent = () => {
         </div>
 
         <div>
-            <div id="editor-articles-list" class="mb-4 text-sm"></div>
+            <div id="editor-articles-list" class="mb-4 text-[0.85rem]"></div>
             <div class="form-group">
                 <label class="font-semibold">Summary Rules</label>
-                <textarea
-                    id="editor-summary-rules"
-                    rows="14"
-                    class="form-control text-sm bg-[#fffde7] border-[#fbc02d] mt-2 p-2"
-                    oninput="updateSummaryRules(this.value)"
-                    placeholder="Persistent rules sent as system instructions to the AI...">${summaryRulesValue}</textarea>
-                <div class="text-[0.7rem] text-[#999] mt-1">
-                    These rules persist across saves and categories.
-                </div>
+                <textarea id="editor-summary-rules" rows="14" class="form-control text-[0.85rem] bg-[#fffde7] border-[#fbc02d] mt-2 p-2" oninput="updateSummaryRules(this.value)" placeholder="Persistent rules sent as system instructions to the AI...">${summaryRulesValue}</textarea>
+                <div class="text-[0.7rem] text-[#999] mt-1">These rules persist across saves and categories.</div>
             </div>
         </div>
 
         <div class="form-group mt-2.5">
             <label class="font-semibold">Created Result</label>
-            <textarea
-                id="editor-result"
-                rows="10"
-                class="form-control text-[0.9rem] bg-[#f5f5f5] mt-2 p-2"
-                oninput="updateNewsletterContent('${currentEditorTab}', 'result', this.value)"
-                placeholder="The AI-generated result will appear here...">${resultValue}</textarea>
+            <textarea id="editor-result" rows="10" class="form-control text-[0.9rem] bg-[#f5f5f5] mt-2 p-2" oninput="updateNewsletterContent('${currentEditorTab}', 'result', this.value)" placeholder="The AI-generated result will appear here...">${resultValue}</textarea>
         </div>
 
         <div class="flex justify-end gap-2.5 mt-4">
-            <button
-                class="btn btn-primary btn-sm"
-                onclick="selectGeneratedContent('${currentEditorTab}')">
-                Select ${currentEditorTab}
-            </button>
-            <button
-                class="btn btn-outline btn-sm"
-                onclick="copyEditorContent('${currentEditorTab}')">
-                Copy ${currentEditorTab} Content
-            </button>
+            <button class="btn btn-primary btn-sm" onclick="selectGeneratedContent('${currentEditorTab}')">Select ${currentEditorTab}</button>
+            <button class="btn btn-outline btn-sm" onclick="copyEditorContent('${currentEditorTab}')">Copy ${currentEditorTab} Content</button>
         </div>
 
         <div class="mt-6 pt-4.5 border-t border-[#e5e7eb]">
@@ -1642,10 +1400,9 @@ window.renderEditorContent = () => {
             <select class="form-control max-w-130 p-2" onchange="updateSelectedGreeting(this.value)">
                 ${greetingOptionsHtml}
             </select>
-            <div class="text-[0.8rem] text-[#666] mt-2">
-                This changes only the greeting line. The sign-off name stays as Jessica.
-            </div>
-        </div>`;
+            <div class="text-[0.8rem] text-[#666] mt-2">This changes only the greeting line. The sign-off name stays as Jessica.</div>
+        </div>
+    `;
     const templateEl = document.getElementById('editor-template');
     if (templateEl) templateEl.value = templateValue || '';
     const listEl = document.getElementById('editor-articles-list');
@@ -1658,26 +1415,12 @@ window.renderEditorContent = () => {
                 const date = escapeHtml(a.date || '');
                 return `<div class="py-2 border-b border-[#eee]">
                     <div class="font-semibold">${i + 1}. ${title}</div>
-                    ${date ? `<div class="text-xs text-[#777]">${date}</div>` : ''}
-                    ${
-                    url
-                        ? `<a
-                                href="${url}" target="_blank"
-                                class="text-xs break-all">
-                                ${url}
-                            </a>`
-                        : '<span class="text-muted">No URL</span>'
-                }
+                    ${date ? `<div class="text-[0.75rem] text-[#777]">${date}</div>` : ''}
+                    ${url ? `<a href="${url}" target="_blank" class="text-[0.78rem] break-all">${url}</a>` : '<span class="text-muted">No URL</span>'}
                 </div>`;
             }).join('')
-            : `<span class="text-muted">No priority 1-4 articles for ${currentEditorTab}.</span>`;
-        listEl.innerHTML =
-            `<label class="font-semibold">Summary Source Articles for ${currentEditorTab}</label>
-            <div class="max-h-70 overflow-y-auto mt-1.5 leading-[1.4]">${listHtml}</div>
-            <div class="text-[0.7rem] text-[#999] mt-1">
-                Only articles marked 1, 2, 3, or 4 in Article View/Image View are used here for
-                summary generation.
-            </div>`;
+            : '<span class="text-muted">No priority 1-4 articles for ' + currentEditorTab + '.</span>';
+        listEl.innerHTML = '<label class="font-semibold">Summary Source Articles for ' + currentEditorTab + '</label><div class="max-h-70 overflow-y-auto mt-1.5 leading-[1.4]">' + listHtml + '</div><div class="text-[0.7rem] text-[#999] mt-1">Only articles marked 1, 2, 3, or 4 in Article View/Image View are used here for summary generation.</div>';
     }
 };
 
@@ -1742,9 +1485,7 @@ window.uploadAllTemplates = () => {
             input.value = '';
             if (statusEl) statusEl.textContent = 'All 4 templates uploaded (MED, THC, CBD, INV).';
             const ta = document.getElementById('editor-template');
-            if (ta &&
-                newsletterContent.templates &&
-                newsletterContent.templates[currentEditorTab]) {
+            if (ta && newsletterContent.templates && newsletterContent.templates[currentEditorTab]) {
                 ta.value = newsletterContent.templates[currentEditorTab];
             }
         }
@@ -1769,12 +1510,8 @@ window.generateSummary = async (category) => {
     const categoryArticles = getSummaryArticlesForCategory(category);
     const btnText = document.getElementById(`gen-btn-text-${category}`);
 
-    if (!prompt) {
-        return alert('Please enter a prompt.');
-    }
-    if (categoryArticles.length === 0) {
-        return alert(`No priority-ranked articles (1-4) found for ${category}.`);
-    }
+    if (!prompt) return alert('Please enter a prompt.');
+    if (categoryArticles.length === 0) return alert(`No priority-ranked articles (1-4) found for ${category}.`);
 
     btnText.textContent = 'Generating...';
 
@@ -1788,9 +1525,7 @@ window.generateSummary = async (category) => {
                 summaryRules,
                 category,
                 articles: categoryArticles,
-                model: document.getElementById('ai-model')
-                    ? document.getElementById('ai-model').value
-                    : '',
+                model: document.getElementById('ai-model') ? document.getElementById('ai-model').value : '',
             }),
         });
         const data = await res.json();
@@ -1802,10 +1537,7 @@ window.generateSummary = async (category) => {
             const resultEl = document.getElementById('editor-result');
             if (resultEl) resultEl.value = resultText;
         } else {
-            alert(
-                'Generation failed: ' +
-                (data.error || 'Unknown error') + (data.details ? '\n' + data.details : ''),
-            );
+            alert('Generation failed: ' + (data.error || 'Unknown error') + (data.details ? '\n' + data.details : ''));
         }
     } catch (e) {
         console.error(e);
@@ -1834,9 +1566,7 @@ window.updateSelectedGreeting = (value) => {
 
 window.selectGeneratedContent = (category) => {
     const resultEl = document.getElementById('editor-result');
-    const generatedText = resultEl
-        ? resultEl.value.trim()
-        : ((newsletterContent[category] && newsletterContent[category].result) || '').trim();
+    const generatedText = resultEl ? resultEl.value.trim() : ((newsletterContent[category] && newsletterContent[category].result) || '').trim();
 
     if (!generatedText) {
         return alert(`No generated ${category} content to select yet.`);
@@ -1878,9 +1608,7 @@ function renderConfirmationView() {
     if (!summary) return;
 
     const newsletterNameInput = document.getElementById('newsletter-name');
-    const activeNewsletterName = currentSessionName ||
-        (newsletterNameInput ? newsletterNameInput.value.trim() : '') ||
-        'Newsletter';
+    const activeNewsletterName = currentSessionName || (newsletterNameInput ? newsletterNameInput.value.trim() : '') || 'Newsletter';
 
     // Calculate stats from the same category-selection logic used in the app
     const stats = {
@@ -1898,8 +1626,8 @@ function renderConfirmationView() {
     };
     const subjectPrompt = normalizeSubjectPrompt(newsletterContent.subjectPrompt);
 
-    summary.innerHTML =
-        `<h3>Newsletter Summary</h3>
+    summary.innerHTML = `
+        <h3>Newsletter Summary</h3>
         <p><strong>Newsletter Name:</strong> ${activeNewsletterName}</p>
         <p><strong>Inspirational Images:</strong> ${inspirationalImages.length} selected</p>
         <div class="grid grid-cols-5 gap-2.5 mt-4">
@@ -1928,51 +1656,27 @@ function renderConfirmationView() {
             <div class="flex justify-between items-start gap-4 flex-wrap mb-3">
                 <div>
                     <div class="text-[1rem] font-bold mb-1">Subject Generator</div>
-                    <div class="text-[0.82rem] text-[#666]">
-                        Uses the top 3 priority articles for each category and generates clicky
-                        email subjects with emojis.
-                    </div>
+                    <div class="text-[0.82rem] text-[#666]">Uses the top 3 priority articles for each category and generates clicky email subjects with emojis.</div>
                 </div>
                 <div class="flex gap-2.5 flex-wrap">
-                    <button
-                        id="btn-generate-subjects"
-                        class="btn btn-primary btn-sm"
-                        onclick="generateAllSubjects()">
-                        <span id="btn-generate-subjects-text">Generate Subjects</span>
-                    </button>
-                    <button
-                        class="btn btn-outline btn-sm"
-                        type="button"
-                        onclick="pushStateToServer()"
-                        title="Save the subject prompt and generated subjects to Supabase">
-                        Push to Server
-                    </button>
+                    <button id="btn-generate-subjects" class="btn btn-primary btn-sm" onclick="generateAllSubjects()"><span id="btn-generate-subjects-text">Generate Subjects</span></button>
+                    <button class="btn btn-outline btn-sm" type="button" onclick="pushStateToServer()" title="Save the subject prompt and generated subjects to Supabase">Push To Server</button>
                 </div>
             </div>
-            <textarea
-                class="form-control mb-3 text-[0.9rem] p-2"
-                rows="3"
-                oninput="updateSubjectPrompt(this.value)">${escapeHtml(subjectPrompt)}</textarea>
+            <textarea class="form-control mb-3 text-[0.9rem] p-2" rows="3" oninput="updateSubjectPrompt(this.value)">${escapeHtml(subjectPrompt)}</textarea>
             <div class="grid grid-cols-2 gap-3">
                 ${['MED', 'THC', 'CBD', 'INV'].map((cat) => `
                     <div class="p-3 border border-[#e5e7eb] rounded-lg bg-white">
                         <div class="flex justify-between items-center gap-2.5">
                             <strong>${cat}</strong>
-                            <button
-                                class="btn btn-outline btn-sm"
-                                onclick="copyGeneratedSubject('${cat}')">
-                                Copy
-                            </button>
+                            <button class="btn btn-outline btn-sm" onclick="copyGeneratedSubject('${cat}')">Copy</button>
                         </div>
-                        <textarea
-                            class="form-control text-[0.88rem] bg-white mt-2 p-2"
-                            rows="3"
-                            oninput="updateGeneratedSubject('${cat}', this.value)"
-                            placeholder="Generate a subject for ${cat}...">${escapeHtml(generatedSubjects[cat] || '')}</textarea>
+                        <textarea class="form-control text-[0.88rem] bg-white mt-2 p-2" rows="3" oninput="updateGeneratedSubject('${cat}', this.value)" placeholder="Generate a subject for ${cat}...">${escapeHtml(generatedSubjects[cat] || '')}</textarea>
                     </div>
                 `).join('')}
             </div>
-        </div>`;
+        </div>
+    `;
     const uploadBtn = document.getElementById('btn-upload-newsletters');
     const exportGenBtn = document.getElementById('btn-export-generated');
     if (uploadBtn) uploadBtn.disabled = !lastGeneratedNewsletter;
@@ -1982,19 +1686,12 @@ function renderConfirmationView() {
 
 function getActiveNewsletterName() {
     const newsletterNameInput = document.getElementById('newsletter-name');
-    return currentSessionName ||
-        (newsletterNameInput ? newsletterNameInput.value.trim() : '') ||
-        'Newsletter';
-}
-
-function getActiveNewsletterFilename(category) {
-    return `${getActiveNewsletterName().replace(/[^\w\-]+/g, '-') || 'newsletter'}-${category}`;
+    return currentSessionName || (newsletterNameInput ? newsletterNameInput.value.trim() : '') || 'Newsletter';
 }
 
 function getSelectedOrGeneratedSummary(category) {
     const selectedResults = getSelectedCategoryResults();
-    return (selectedResults[category] ||
-        (newsletterContent[category] && newsletterContent[category].result) || '').trim();
+    return (selectedResults[category] || (newsletterContent[category] && newsletterContent[category].result) || '').trim();
 }
 
 function getSubjectArticlesForCategory(category) {
@@ -2019,10 +1716,7 @@ function isIncludedInConfirmation(article) {
 }
 
 function getMainArticlesForCategory(category) {
-    return getArticlesForCategory(category).filter(a =>
-        ['Y', 'YM'].includes(a.status) &&
-        isIncludedInConfirmation(a),
-    );
+    return getArticlesForCategory(category).filter(a => ['Y', 'YM'].includes(a.status) && isIncludedInConfirmation(a));
 }
 
 function getInterestingFindsArticles() {
@@ -2054,13 +1748,7 @@ function isPublicHostedUrl(url) {
 }
 
 function getArticleImageUrl(article) {
-    return getDownloadSafeAssetUrl(
-        article.publishedImageUrl ||
-        article.image ||
-        article.originalImageUrl ||
-        article.uploadedImageUrl ||
-        '',
-    );
+    return getDownloadSafeAssetUrl(article.publishedImageUrl || article.image || article.originalImageUrl || article.uploadedImageUrl || '');
 }
 
 function getSourceLabel(url) {
@@ -2119,32 +1807,15 @@ function buildFallbackConfirmationHtml(category) {
         const url = article.url || '#';
         const source = escapeHtml(getSourceLabel(article.url || ''));
         const image = getArticleImageUrl(article);
-        return `<div style="display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid #eee;">
-                ${
-            image
-                ? `<img
-                            src="${image}"
-                            alt=""
-                            style="width: 60px; height: 60px; object-fit: cover; border-radius: 6px;">`
-                : ''
-        }
+        return `
+            <div style="display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid #eee;">
+                ${image ? `<img src="${image}" alt="" style="width: 60px; height: 60px; object-fit: cover; border-radius: 6px;">` : ''}
                 <div>
-                    <a
-                        href="${url}"
-                        target="_blank"
-                        style="color: #111; font-weight: 700; text-decoration: none;">
-                        ${title}
-                    </a>
-                    <div>
-                        <a
-                            href="${url}"
-                            target="_blank"
-                            style="color: #2a6edc; font-size: 0.85rem;">
-                            ${source}
-                        </a>
-                    </div>
+                    <a href="${url}" target="_blank" style="color: #111; font-weight: 700; text-decoration: none;">${title}</a>
+                    <div><a href="${url}" target="_blank" style="color: #2a6edc; font-size: 0.85rem;">${source}</a></div>
                 </div>
-            </div>`;
+            </div>
+        `;
     }).join('');
     const findsHtml = getInterestingFindsArticles().slice(0, 4).map(article => {
         const title = escapeHtml(article.title || 'Untitled');
@@ -2152,33 +1823,21 @@ function buildFallbackConfirmationHtml(category) {
         return `<li style="margin-bottom: 8px;"><a href="${url}" target="_blank">${title}</a></li>`;
     }).join('');
     const inspiration = chooseConfirmationInspirationalImage();
-    return `<!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8"><title>${newsletterName} - ${category}</title>
-        </head>
-        <body style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px;">
-            <h1>${newsletterName} - ${category}</h1>
-            <p>${summary || 'No summary selected yet.'}</p>
-            <h2>Weekly News</h2>
-            ${weeklyHtml || '<p>No weekly news articles selected yet.</p>'}
-            <h2>Interesting Finds</h2>
-            <ul>${findsHtml || '<li>No interesting finds selected yet.</li>'}</ul>
-            <h2>Inspiration</h2>
-            ${
-        inspiration
-            ? `<img src="${inspiration}" alt="Inspiration" style="max-width: 100%;">`
-            : '<p>No inspirational image selected yet.</p>'
-    }
-        </body>
-        </html>`;
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${newsletterName} - ${category}</title></head><body style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px;">
+        <h1>${newsletterName} - ${category}</h1>
+        <p>${summary || 'No summary selected yet.'}</p>
+        <h2>Weekly News</h2>
+        ${weeklyHtml || '<p>No weekly news articles selected yet.</p>'}
+        <h2>Interesting Finds</h2>
+        <ul>${findsHtml || '<li>No interesting finds selected yet.</li>'}</ul>
+        <h2>Inspiration</h2>
+        ${inspiration ? `<img src="${inspiration}" alt="Inspiration" style="max-width: 100%;">` : '<p>No inspirational image selected yet.</p>'}
+    </body></html>`;
 }
 
 function applySummaryToTemplate(doc, category) {
     const summaryText = getSelectedOrGeneratedSummary(category);
-    const introCell = Array
-        .from(doc.querySelectorAll('td, div, p'))
-        .find(el => (el.textContent || '').includes('Hi [FNAME],'));
+    const introCell = Array.from(doc.querySelectorAll('td, div, p')).find(el => (el.textContent || '').includes('Hi [FNAME],'));
     if (!introCell || !summaryText) return;
     const selectedGreeting = escapeHtml(newsletterContent.selectedGreeting || DEFAULT_GREETING);
 
@@ -2188,28 +1847,7 @@ function applySummaryToTemplate(doc, category) {
         .filter(Boolean)
         .map(line => escapeHtml(line));
 
-    introCell.innerHTML =
-        `<span style="font-size: 14px; line-height: 150%; color: #000000;">
-            Hi [FNAME],
-            <br>
-            <br>
-            ${lines.join('<br>')}
-            <br>
-            <br>
-            ${selectedGreeting}
-            <br>
-            Jessica
-            <br>
-            <br>
-            If this newsletter&#8217;s not for you, just
-            <a
-                href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}"
-                style="color: #2baadf; text-decoration: underline;">
-                unsubscribe
-            </a> and you won&#8217;t hear from us again. :)
-        </span>
-        <br/>
-        &nbsp;`;
+    introCell.innerHTML = `<span style="font-size: 14px; line-height: 150%; color: #000000;">Hi [FNAME],<br><br>${lines.join('<br>')}<br><br>${selectedGreeting}<br>Jessica<br><br>If this newsletter&#8217;s not for you, just <a href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}" style="color: #2baadf; text-decoration: underline;">unsubscribe</a> and you won&#8217;t hear from us again. :) </span><br />&nbsp;`;
 }
 
 function getGeneratedConfirmationHeading(category) {
@@ -2250,32 +1888,16 @@ function enforceFixedTemplateChrome(doc, category) {
 
     const footerBlocks = Array.from(doc.querySelectorAll('table.footer td'));
     if (footerBlocks[0]) {
-        footerBlocks[0].innerHTML =
-            `<div><em>Copyright &copy; 2026 Purablis, All rights reserved.</em></div>
+        footerBlocks[0].innerHTML = `
+            <div><em>Copyright &copy; 2026 Purablis, All rights reserved.</em></div>
             <div>Email Contact:</div>
-            <div>
-                <a
-                    href="mailto:${TEMPLATE_FIXED_CONTENT.contactEmail}"
-                    style="mso-line-height-rule: exactly; -ms-text-size-adjust: 100%; -webkit-text-size-adjust: 100%; color: #0000f1; font-weight: normal; text-decoration: underline;"
-                    target="_blank">
-                    ${TEMPLATE_FIXED_CONTENT.contactEmail}
-                </a>
-                <br/>
-                <a
-                    href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}"
-                    style="color: #2baadf; text-decoration: underline;">
-                    Unsubscribe
-                </a>
-            </div>
-            <div>
-                ${escapeHtml(TEMPLATE_FIXED_CONTENT.footerAddress).replace(/·/g, '&middot;')}
-            </div>`;
+            <div><a href="mailto:${TEMPLATE_FIXED_CONTENT.contactEmail}" style="mso-line-height-rule: exactly; -ms-text-size-adjust: 100%; -webkit-text-size-adjust: 100%; color: #0000f1; font-weight: normal; text-decoration: underline;" target="_blank">${TEMPLATE_FIXED_CONTENT.contactEmail}</a><br />
+            <a href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}" style="color: #2baadf; text-decoration: underline;">Unsubscribe</a></div>
+            <div>${escapeHtml(TEMPLATE_FIXED_CONTENT.footerAddress).replace(/·/g, '&middot;')}</div>
+        `;
     }
     if (footerBlocks[1]) {
-        footerBlocks[1].innerHTML =
-            `<span style="font-size: 11px; line-height: 150%; color: #989898;">
-                ${escapeHtml(TEMPLATE_FIXED_CONTENT.footerLegal)}
-            </span>`;
+        footerBlocks[1].innerHTML = `<span style="font-size: 11px; line-height: 150%; color: #989898;">${escapeHtml(TEMPLATE_FIXED_CONTENT.footerLegal)}</span>`;
     }
 }
 
@@ -2344,12 +1966,7 @@ function buildSummaryHtml(category) {
                 ${selectedGreeting}<br/>
                 Jessica<br/>
                 <br/>
-                If this newsletter&#8217;s not for you, just
-                <a
-                    href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}"
-                    style="color: #2baadf; text-decoration: underline;">
-                    unsubscribe
-                </a> and you won&#8217;t hear from us again. :)
+                If this newsletter&#8217;s not for you, just <a href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}" style="color: #2baadf; text-decoration: underline;">unsubscribe</a> and you won&#8217;t hear from us again. :)
             </span><br/>
             &nbsp;
         </div>`;
@@ -2358,27 +1975,14 @@ function buildSummaryHtml(category) {
 function replaceArticleSection(html, startMarker, endMarker, articles) {
     const startBounds = findHeaderTableBounds(html, startMarker);
     const endBounds = findHeaderTableBounds(html, endMarker);
-    if (!startBounds || !endBounds || endBounds.start <= startBounds.end) {
-        return html;
-    }
+    if (!startBounds || !endBounds || endBounds.start <= startBounds.end) return html;
 
     const currentSection = html.slice(startBounds.end, endBounds.start);
-    const sampleMatch =
-        currentSection
-            .match(/<table[^>]*class="mcnCaptionRightImageContentContainer"[\s\S]*?<\/table>/i);
-    if (!sampleMatch) {
-        return html;
-    }
+    const sampleMatch = currentSection.match(/<table[^>]*class="mcnCaptionRightImageContentContainer"[\s\S]*?<\/table>/i);
+    if (!sampleMatch) return html;
 
-    const renderedTables =
-        articles
-            .map(article => buildArticleTableHtml(sampleMatch[0], article))
-            .join('\n');
-    return html.slice(0, startBounds.end) +
-        '\n\n' +
-        renderedTables +
-        '\n\n' +
-        html.slice(endBounds.start);
+    const renderedTables = articles.map(article => buildArticleTableHtml(sampleMatch[0], article)).join('\n');
+    return html.slice(0, startBounds.end) + '\n\n' + renderedTables + '\n\n' + html.slice(endBounds.start);
 }
 
 function renderTemplateHtml(category, templateHtml) {
@@ -2388,11 +1992,7 @@ function renderTemplateHtml(category, templateHtml) {
     const summaryHtml = buildSummaryHtml(category);
 
     if (summaryHtml) {
-        html =
-            html.replace(
-                /<div style="text-align: justify;">[\s\S]*?&nbsp;\s*<\/div>/i,
-                summaryHtml,
-            );
+        html = html.replace(/<div style="text-align: justify;">[\s\S]*?&nbsp;\s*<\/div>/i, summaryHtml);
     }
 
     html = replaceArticleSection(html, 'Weekly News', 'Interesting Finds', mainArticles);
@@ -2400,63 +2000,17 @@ function renderTemplateHtml(category, templateHtml) {
 
     const inspirationImage = chooseConfirmationInspirationalImage();
     if (inspirationImage) {
-        html =
-            html.replace(
-                /(<a[^>]*target="_blank"[^>]*title="">\s*<img alt="Inspiration" class="mcnImage2" src=")([^"]*)(")/i,
-                `$1${inspirationImage}$3`,
-            );
+        html = html.replace(/(<a[^>]*target="_blank"[^>]*title="">\s*<img alt="Inspiration" class="mcnImage2" src=")([^"]*)(")/i, `$1${inspirationImage}$3`);
     }
 
-    html =
-        html.replace(
-            /<a href="http:\/\/www\.purablis\.com" target="_blank"><img alt="" class="puralogsize" src="[^"]*" \/><\/a>/i,
-            `<a
-                href="${TEMPLATE_FIXED_CONTENT.logoHref}"
-                target="_blank">
-                <img alt="" class="puralogsize" src="${TEMPLATE_FIXED_CONTENT.logoSrc}"/>
-            </a>`,
-        );
-    html =
-        html.replace(
-            /<a href="https:\/\/www\.youtube\.com\/Purablis"[\s\S]*?<img alt="YouTube" class="mcnFollowBlockIcon" src="[^"]*"[\s\S]*?<\/a>/i,
-            `<a
-                href="${TEMPLATE_FIXED_CONTENT.youtubeHref}"
-                style="mso-line-height-rule: exactly; -ms-text-size-adjust: 100%;-webkit-text-size-adjust: 100%;"
-                target="_blank">
-                <img
-                    alt="YouTube"
-                    class="mcnFollowBlockIcon"
-                    src="${TEMPLATE_FIXED_CONTENT.youtubeIconSrc}"
-                    style="width: 30px; max-width: 30px; display: block; border: 0; height: auto; outline: none; text-decoration: none;-ms-interpolation-mode: bicubic;"
-                    width="30"/>
-            </a>`,
-        );
-    html =
-        html.replace(
-            /<a href="https:\/\/ap\.lovethelist\.com\/index\.php\/lists\/qk5307z6w1e34\/unsubscribe\/unsubscribe-direct" style="color: #2baadf; text-decoration: underline;">unsubscribe<\/a>/i,
-            `<a
-                href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}"
-                style="color:#2baadf;text-decoration:underline;">
-                unsubscribe
-            </a>`,
-        );
-    html =
-        html.replace(
-            /<a href="https:\/\/ap\.lovethelist\.com\/index\.php\/lists\/qk5307z6w1e34\/unsubscribe\/unsubscribe-direct" style="color: #2baadf; text-decoration: underline;">Unsubscribe<\/a>/i,
-            `<a
-                href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}"
-                style="color:#2baadf;text-decoration:underline;">
-                Unsubscribe
-            </a>`,
-        );
+    html = html.replace(/<a href="http:\/\/www\.purablis\.com" target="_blank"><img alt="" class="puralogsize" src="[^"]*" \/><\/a>/i, `<a href="${TEMPLATE_FIXED_CONTENT.logoHref}" target="_blank"><img alt="" class="puralogsize" src="${TEMPLATE_FIXED_CONTENT.logoSrc}" /></a>`);
+    html = html.replace(/<a href="https:\/\/www\.youtube\.com\/Purablis"[\s\S]*?<img alt="YouTube" class="mcnFollowBlockIcon" src="[^"]*"[\s\S]*?<\/a>/i, `<a href="${TEMPLATE_FIXED_CONTENT.youtubeHref}" style="mso-line-height-rule: exactly; -ms-text-size-adjust: 100%;-webkit-text-size-adjust: 100%;" target="_blank"><img alt="YouTube" class="mcnFollowBlockIcon" src="${TEMPLATE_FIXED_CONTENT.youtubeIconSrc}" style="width: 30px; max-width: 30px; display: block; border: 0; height: auto; outline: none; text-decoration: none;-ms-interpolation-mode: bicubic;" width="30" /></a>`);
+    html = html.replace(/<a href="https:\/\/ap\.lovethelist\.com\/index\.php\/lists\/qk5307z6w1e34\/unsubscribe\/unsubscribe-direct" style="color: #2baadf; text-decoration: underline;">unsubscribe<\/a>/i, `<a href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}" style="color:#2baadf;text-decoration:underline;">unsubscribe</a>`);
+    html = html.replace(/<a href="https:\/\/ap\.lovethelist\.com\/index\.php\/lists\/qk5307z6w1e34\/unsubscribe\/unsubscribe-direct" style="color: #2baadf; text-decoration: underline;">Unsubscribe<\/a>/i, `<a href="${TEMPLATE_FIXED_CONTENT.unsubscribeHref}" style="color:#2baadf;text-decoration:underline;">Unsubscribe</a>`);
 
     const generatedHeading = getGeneratedConfirmationHeading(category);
     if (generatedHeading) {
-        html =
-            html.replace(
-                /(<td class="text"[^>]*><strong>)([\s\S]*?)(<\/strong><\/td>)/i,
-                `$1${escapeHtml(generatedHeading)}$3`,
-            );
+        html = html.replace(/(<td class="text"[^>]*><strong>)([\s\S]*?)(<\/strong><\/td>)/i, `$1${escapeHtml(generatedHeading)}$3`);
     }
 
     return html;
@@ -2482,16 +2036,12 @@ window.switchConfirmationTab = (category) => {
 };
 
 window.downloadConfirmationHtml = async (category) => {
-    const zip = new JSZip();
-    const filename = getActiveNewsletterFilename(category);
-    zip.file(
-        `${filename}.html`,
-        confirmationRenderedHtml[category] || await buildConfirmationHtml(category),
-    );
+    const html = confirmationRenderedHtml[category] || await buildConfirmationHtml(category);
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const url = URL.createObjectURL(await zip.generateAsync({ type: 'blob' }));
     a.href = url;
-    a.download = `${filename}.zip`;
+    a.download = `${getActiveNewsletterName().replace(/[^\w\-]+/g, '-') || 'newsletter'}-${category}.html`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -2499,15 +2049,12 @@ window.downloadConfirmationHtml = async (category) => {
 };
 
 window.downloadConfirmationDoc = async (category) => {
+    const html = confirmationRenderedHtml[category] || await buildConfirmationHtml(category);
+    const blob = new Blob([html], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const url = URL.createObjectURL(
-        new Blob(
-            [confirmationRenderedHtml[category] || await buildConfirmationHtml(category)],
-            { type: 'application/msword' },
-        ),
-    );
     a.href = url;
-    a.download = `${getActiveNewsletterFilename(category)}.doc`;
+    a.download = `${getActiveNewsletterName().replace(/[^\w\-]+/g, '-') || 'newsletter'}-${category}.doc`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -2518,88 +2065,34 @@ async function renderConfirmationPreviews() {
     const container = document.getElementById('confirmation-previews');
     if (!container) return;
 
-    // const selectedSummary = getSelectedOrGeneratedSummary(currentConfirmationTab);
-    const { previewColor, previewText, previewUnicode } =
-        validateHeadlines(
-            articles
-                .filter(a =>
-                    a.categories.includes(currentConfirmationTab) &&
-                    a.publishImage &&
-                    ['Y', 'YM', 'COOL FINDS', 'LATER COOL'].includes(a.status),
-                ).map(a => a.title),
-        );
-    console.log(
-        articles
-            .filter(a =>
-                a.categories.includes(currentConfirmationTab) &&
-                a.publishImage &&
-                ['Y', 'YM', 'COOL FINDS', 'LATER COOL'].includes(a.status),
-            ).map(a => a.title),
-    )
-    container.innerHTML =
-        `<div class="tabs-container mb-4.5 border-b border-[#ddd]">
-            <button
-                class="tab-btn ${currentConfirmationTab === 'MED' ? 'active' : ''}"
-                onclick="switchConfirmationTab('MED')">
-                MED
-            </button>
-            <button
-                class="tab-btn ${currentConfirmationTab === 'THC' ? 'active' : ''}"
-                onclick="switchConfirmationTab('THC')">
-                THC
-            </button>
-            <button
-                class="tab-btn ${currentConfirmationTab === 'CBD' ? 'active' : ''}"
-                onclick="switchConfirmationTab('CBD')">
-                CBD
-            </button>
-            <button
-                class="tab-btn ${currentConfirmationTab === 'INV' ? 'active' : ''}"
-                onclick="switchConfirmationTab('INV')">
-                INV
-            </button>
+    const selectedSummary = getSelectedOrGeneratedSummary(currentConfirmationTab);
+    container.innerHTML = `
+        <div class="tabs-container mb-4.5 border-b border-[#ddd]">
+            <button class="tab-btn ${currentConfirmationTab === 'MED' ? 'active' : ''}" onclick="switchConfirmationTab('MED')">MED</button>
+            <button class="tab-btn ${currentConfirmationTab === 'THC' ? 'active' : ''}" onclick="switchConfirmationTab('THC')">THC</button>
+            <button class="tab-btn ${currentConfirmationTab === 'CBD' ? 'active' : ''}" onclick="switchConfirmationTab('CBD')">CBD</button>
+            <button class="tab-btn ${currentConfirmationTab === 'INV' ? 'active' : ''}" onclick="switchConfirmationTab('INV')">INV</button>
         </div>
         <div class="flex justify-between items-start gap-4 flex-wrap mb-3.5">
             <div>
-                <div>
-                    <span class="text-base font-bold">${currentConfirmationTab} Preview</span>
-                    <span class="text-base font-bold text-[${previewColor}]">
-                        <b>${previewUnicode}</b>
-                    </span>
-                </div>
-                <span class="text-sm text-[${previewColor}] mt-1">${previewText}</span>
+                <div class="text-[1rem] font-bold mb-1">${currentConfirmationTab} Preview</div>
+                <div class="text-[0.85rem] text-[#666]">Uses the example email template itself, then fills in the current summary, ranked articles, interesting finds, and one inspirational image.</div>
             </div>
             <div class="flex gap-2.5 flex-wrap">
-                <button
-                    class="btn btn-primary btn-sm"
-                    onclick="downloadConfirmationHtml('${currentConfirmationTab}')"
-                    title="ZIP file to upload as MailWizz template">
-                    Download HTML
-                </button>
-                <button
-                    class="btn btn-outline btn-sm"
-                    onclick="downloadConfirmationDoc('${currentConfirmationTab}')"
-                    title="Legacy Microsoft Office document format">
-                    Download DOC
-                </button>
+                <button class="btn btn-success btn-sm" onclick="downloadConfirmationHtml('${currentConfirmationTab}')">Download HTML</button>
+                <button class="btn btn-outline btn-sm" onclick="downloadConfirmationDoc('${currentConfirmationTab}')">Download DOC</button>
             </div>
         </div>
-        <div
-            id="confirmation-preview-frame-wrap"
-            class="border border-[#ddd] rounded-[10px] overflow-auto bg-white">
-            <div class="p-6 text-center text-[#666]">
-                Loading ${currentConfirmationTab} template preview...
-            </div>
-        </div>`;
+        <div id="confirmation-preview-frame-wrap" class="border border-[#ddd] rounded-[10px] overflow-auto bg-white">
+            <div class="p-6 text-center text-[#666]">Loading ${currentConfirmationTab} template preview...</div>
+        </div>
+    `;
 
     const html = await buildConfirmationHtml(currentConfirmationTab);
     const frameWrap = document.getElementById('confirmation-preview-frame-wrap');
     if (!frameWrap) return;
 
-    frameWrap.innerHTML =
-        `<iframe
-            title="${currentConfirmationTab} newsletter preview"
-            class="w-225 min-w-225 min-h-275 border-0 bg-white block mx-auto"></iframe>`;
+    frameWrap.innerHTML = `<iframe title="${currentConfirmationTab} newsletter preview" class="w-225 min-w-225 min-h-275 border-0 bg-white block mx-auto"></iframe>`;
     const iframe = frameWrap.querySelector('iframe');
     if (iframe) iframe.srcdoc = html;
 }
@@ -2618,9 +2111,7 @@ window.updateGeneratedSubject = (category, value) => {
 };
 
 window.copyGeneratedSubject = async (category) => {
-    const text =
-        (newsletterContent.generatedSubjects && newsletterContent.generatedSubjects[category]) ||
-        '';
+    const text = (newsletterContent.generatedSubjects && newsletterContent.generatedSubjects[category]) || '';
     if (!text.trim()) return alert(`No ${category} subject to copy yet.`);
     await navigator.clipboard.writeText(text);
     alert(`${category} subject copied.`);
@@ -2632,23 +2123,18 @@ window.generateAllSubjects = async () => {
     const btnText = document.getElementById('btn-generate-subjects-text');
     const categoryArticles = {};
     categories.forEach((category) => {
-        categoryArticles[category] =
-            getSubjectArticlesForCategory(category)
-                .map((article, index) => ({
-                    index: index + 1,
-                    title: article.title || '',
-                    url: article.url || '',
-                    date: article.date || '',
-                    description: article.description || '',
-                }));
+        categoryArticles[category] = getSubjectArticlesForCategory(category).map((article, index) => ({
+            index: index + 1,
+            title: article.title || '',
+            url: article.url || '',
+            date: article.date || '',
+            description: article.description || '',
+        }));
     });
 
     const hasAnyArticles = categories.some((category) => categoryArticles[category].length > 0);
     if (!hasAnyArticles) {
-        return alert(
-            'No top priority articles (1, 2, 3) are ' +
-            'available yet for subject generation.',
-        );
+        return alert('No top priority articles (1, 2, 3) are available yet for subject generation.');
     }
 
     const prompt = normalizeSubjectPrompt(newsletterContent.subjectPrompt);
@@ -2664,12 +2150,7 @@ window.generateAllSubjects = async () => {
                 model: 'gemini-flash-3-0',
             }),
         });
-        const data =
-            await parseJsonResponse(
-                res,
-                'Subject generation route did not return JSON. ' +
-                'Restart the app server and try again.',
-            );
+        const data = await parseJsonResponse(res, 'Subject generation route did not return JSON. Restart the app server and try again.');
         if (!res.ok || !data.success || !data.subjects) {
             throw new Error(data.error || 'Failed to generate subjects');
         }
@@ -2720,20 +2201,7 @@ window.exportSpreadsheet = () => {
             '', '',
             medText, thcText, cbdText, invText,
         ],
-        [
-            'Title',
-            'URL',
-            'MED',
-            'THC',
-            'CBD',
-            'INV',
-            'Image URL',
-            'Published Image URL',
-            'MED Newsletter Text',
-            'THC Newsletter Text',
-            'CBD Newsletter Text',
-            'INV Newsletter Text',
-        ],
+        ['Title', 'URL', 'MED', 'THC', 'CBD', 'INV', 'Image URL', 'Published Image URL', 'MED Newsletter Text', 'THC Newsletter Text', 'CBD Newsletter Text', 'INV Newsletter Text'],
     ];
 
     chosen.forEach(a => {
@@ -2742,10 +2210,7 @@ window.exportSpreadsheet = () => {
         const cbd = (a.ranks && a.ranks.CBD) && String(a.ranks.CBD).trim();
         const inv = (a.ranks && a.ranks.INV) && String(a.ranks.INV).trim();
         const imgUrl = a.image || '';
-        const publishedImgUrl =
-            (a.image && a.image.includes('purablis.com'))
-                ? a.image
-                : (a.publishedImageUrl || '');
+        const publishedImgUrl = (a.image && a.image.includes('purablis.com')) ? a.image : (a.publishedImageUrl || '');
         aoa.push([
             a.title || '',
             a.url || '',
@@ -2803,15 +2268,7 @@ function buildArticlesHtml(category) {
     });
     return relevant.map(a => `
         <div class="article-item">
-            ${
-        a.image
-            ? `<img
-                        src="${a.image}"
-                        alt=""
-                        style="max-width: 90px; height: 90px; object-fit: cover;"
-                        onerror="this.onerror = null; this.src = '${a.originalImageUrl || ''}';">`
-            : ''
-    }
+            ${a.image ? `<img src="${a.image}" alt="" style="max-width: 90px; height: 90px; object-fit: cover;" onerror="this.onerror=null;this.src='${a.originalImageUrl || ''}';">` : ''}
             <div>
                 <strong>${(a.title || '').replace(/</g, '&lt;')}</strong>
                 <a href="${a.url || '#'}">${(a.url || '').replace(/</g, '&lt;')}</a>
@@ -2824,10 +2281,7 @@ window.generateNewsletters = () => {
     const newsletterName = document.getElementById('newsletter-name')?.value || 'Newsletter';
     const statusEl = document.getElementById('generate-status');
     const uploadBtn = document.getElementById('btn-upload-newsletters');
-    const inspirationalImg =
-        inspirationalImages && inspirationalImages[0]
-            ? inspirationalImages[0]
-            : '';
+    const inspirationalImg = inspirationalImages && inspirationalImages[0] ? inspirationalImages[0] : '';
 
     const newsletters = {};
     const categories = ['MED', 'THC', 'CBD', 'INV'];
@@ -2840,49 +2294,25 @@ window.generateNewsletters = () => {
         let html = template;
 
         if (html) {
-            html =
-                html
-                    .replace(/\{\{SUMMARY\}\}/g, resultText)
-                    .replace(/\{\{ARTICLES_HTML\}\}/g, articlesHtml)
-                    .replace(/\{\{INSPIRATIONAL_IMAGE\}\}/g, inspirationalImg)
-                    .replace(/\{\{NEWSLETTER_NAME\}\}/g, newsletterName);
+            html = html
+                .replace(/\{\{SUMMARY\}\}/g, resultText)
+                .replace(/\{\{ARTICLES_HTML\}\}/g, articlesHtml)
+                .replace(/\{\{INSPIRATIONAL_IMAGE\}\}/g, inspirationalImg)
+                .replace(/\{\{NEWSLETTER_NAME\}\}/g, newsletterName);
         } else {
-            const safeResult =
-                (resultText || '')
-                    .replace(/</g, '&lt;')
-                    .replace(/>/g, '&gt;')
-                    .replace(/\n/g, '<br>');
-            html =
-                `<!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="utf-8">
-                    <title>${(newsletterName + ' - ' + cat).replace(/</g, '&lt;')}</title>
-                </head>
-                <body>
-                    <h1>${(newsletterName + ' - ' + cat).replace(/</g, '&lt;')}</h1>
-                    ${
-                    inspirationalImg
-                        ? `<img
-                                src="${inspirationalImg.replace(/"/g, '&quot;')}"
-                                alt="Header"
-                                style="max-width: 100%;">`
-                        : ''}
-                    <div class="summary">${safeResult}</div>
-                    <div class="articles">${articlesHtml}</div>
-                </body>
-                </html>`;
+            const safeResult = (resultText || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+            html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${(newsletterName + ' - ' + cat).replace(/</g, '&lt;')}</title></head><body>
+                <h1>${(newsletterName + ' - ' + cat).replace(/</g, '&lt;')}</h1>
+                ${inspirationalImg ? `<img src="${inspirationalImg.replace(/"/g, '&quot;')}" alt="Header" style="max-width: 100%;">` : ''}
+                <div class="summary">${safeResult}</div>
+                <div class="articles">${articlesHtml}</div>
+            </body></html>`;
         }
 
         newsletters[cat] = {
             html,
             resultText,
-            articles:
-                articles.filter(a =>
-                    ['Y', 'YM', 'COOL FINDS'].includes(a.status) &&
-                    a.categories &&
-                    a.categories.includes(cat),
-                ),
+            articles: articles.filter(a => ['Y', 'YM', 'COOL FINDS'].includes(a.status) && a.categories && a.categories.includes(cat)),
             inspirationalImage: inspirationalImg,
         };
     }
@@ -2894,31 +2324,19 @@ window.generateNewsletters = () => {
         articles: articles.filter(a => ['Y', 'YM', 'COOL FINDS'].includes(a.status)),
     };
 
-    if (uploadBtn) {
-        uploadBtn.disabled = false;
-    }
+    if (uploadBtn) uploadBtn.disabled = false;
     const exportBtn = document.getElementById('btn-export-generated');
-    if (exportBtn) {
-        exportBtn.disabled = false;
-    }
-    if (statusEl) {
-        statusEl.textContent = `Generated ${categories.length} newsletters. Ready to upload.`;
-    }
+    if (exportBtn) exportBtn.disabled = false;
+    if (statusEl) statusEl.textContent = `Generated ${categories.length} newsletters. Ready to upload.`;
 };
 
 window.exportGeneratedNewsletter = () => {
     if (!lastGeneratedNewsletter) return alert('Generate newsletters first.');
-    const blob =
-        new Blob(
-            [JSON.stringify(lastGeneratedNewsletter, null, 2)],
-            { type: 'application/json' },
-        );
+    const blob = new Blob([JSON.stringify(lastGeneratedNewsletter, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download =
-        `newsletter-generated-${(lastGeneratedNewsletter.meta.name || 'newsletter')
-            .replace(/\s/g, '-')}-${Date.now()}.json`;
+    a.download = `newsletter-generated-${(lastGeneratedNewsletter.meta.name || 'newsletter').replace(/\s/g, '-')}-${Date.now()}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -2955,11 +2373,7 @@ window.uploadNewslettersToServer = async () => {
 };
 
 window.publishAllImagesToPurablis = async () => {
-    const relevant =
-        articles.filter(a =>
-            (a.categories && a.categories.length > 0) ||
-            a.status === 'COOL FINDS' || a.status === 'M',
-        );
+    const relevant = articles.filter(a => (a.categories && a.categories.length > 0) || a.status === 'COOL FINDS' || a.status === 'M');
     // Filter: has image, publish flag not false, AND (not yet published OR published URL doesn't match current image)
     // We want to ensure everything is on purablis.
     const withImages = relevant.filter(a => {
@@ -2969,8 +2383,7 @@ window.publishAllImagesToPurablis = async () => {
         // For now, if we have a published URL, assume it's done unless user manually cleared it.
         // But if verification logic was added, we might want to re-run.
         // Let's just check if it's already published.
-        const isAlreadyPublished =
-            a.publishedImageUrl && a.publishedImageUrl.includes('purablis.com');
+        const isAlreadyPublished = a.publishedImageUrl && a.publishedImageUrl.includes('purablis.com');
         const isBlob = (a.image && a.image.startsWith('blob:'));
 
         // If it's a blob, we definitely need to publish.
@@ -2983,17 +2396,9 @@ window.publishAllImagesToPurablis = async () => {
     if (withImages.length === 0) {
         const hasAny = relevant.some(a => a.image);
         // Check if any are actually published
-        const allPublished =
-            relevant.every(a =>
-                !a.image ||
-                (a.publishedImageUrl && a.publishedImageUrl.includes('purablis.com')),
-            );
+        const allPublished = relevant.every(a => !a.image || (a.publishedImageUrl && a.publishedImageUrl.includes('purablis.com')));
 
-        return alert(
-            allPublished ?
-                'All images are already published to purablis.com.'
-                : 'No images to publish. Select images for articles first.',
-        );
+        return alert(allPublished ? 'All images are already published to purablis.com.' : 'No images to publish. Select images for articles first.');
     }
 
     const btn = document.querySelector('[onclick="publishAllImagesToPurablis()"]');
@@ -3052,41 +2457,20 @@ window.publishAllImagesToPurablis = async () => {
 
                     const box = document.getElementById(`selected-img-${idx}`);
                     if (box) {
-                        box.innerHTML =
-                            `<div class="selected-image-container">
-                                <img
-                                    src="${data.url}"
-                                    class="img-fluid max-h-30"
-                                    onerror="this.onerror = null; this.src = '${articles[idx].originalImageUrl || ''}'; this.parentElement.classList.add('img-fallback');">
-                                <button class="btn-remove-image" onclick="removeImage(${idx})">
-                                    &times;
-                                </button>
-                                <span class="badge-published" title="Published">P</span>
-                            </div>`;
+                        box.innerHTML = `<div class="selected-image-container"><img src="${data.url}" class="img-fluid max-h-[120px]" onerror="this.onerror=null;this.src='${articles[idx].originalImageUrl || ''}';this.parentElement.classList.add('img-fallback');"><button class="btn-remove-image" onclick="removeImage(${idx})">×</button><span class="badge-published" title="Published">P</span></div>`;
                     }
                 } else {
                     fail++;
-                    errors.push(
-                        (a.title || 'Article').slice(0, 30) +
-                        ': Uploaded, but URL unreachable.',
-                    );
+                    errors.push((a.title || 'Article').slice(0, 30) + ': Uploaded, but URL unreachable.');
                 }
                 saveState();
             } else {
                 fail++;
-                errors.push(
-                    (a.title || 'Article').slice(0, 30) +
-                    ': ' +
-                    (data.error || 'Unknown error'),
-                );
+                errors.push((a.title || 'Article').slice(0, 30) + ': ' + (data.error || 'Unknown error'));
             }
         } catch (e) {
             fail++;
-            errors.push(
-                (a.title || 'Article').slice(0, 30) +
-                ': ' +
-                (e.message || 'Network error'),
-            );
+            errors.push((a.title || 'Article').slice(0, 30) + ': ' + (e.message || 'Network error'));
             console.warn('Publish failed for', url, e);
         }
         if (btn) btn.textContent = `Publishing ${i + 1}/${withImages.length}...`;
@@ -3097,30 +2481,17 @@ window.publishAllImagesToPurablis = async () => {
         btn.textContent = 'Publish Selected to purablis';
     }
     let msg = ok > 0 ? `Published ${ok} image(s) to purablis.com.` : '';
-    if (fail > 0) {
-        msg +=
-            (msg ? ' ' : '') +
-            `${fail} failed.` +
-            (errors.length ? '\n' + errors.slice(0, 3).join('\n') : '');
-    }
-    if (!msg) {
-        msg = 'No images were published.';
-    }
+    if (fail > 0) msg += (msg ? ' ' : '') + `${fail} failed.` + (errors.length ? '\n' + errors.slice(0, 3).join('\n') : '');
+    if (!msg) msg = 'No images were published.';
     alert(msg);
 };
 
 window.downloadAllImagesZip = async () => {
-    const withImages =
-        articles
-            .filter(a =>
-                (a.categories && a.categories.length > 0) ||
-                a.status === 'COOL FINDS' ||
-                a.status === 'M',
-            ).filter(a => a.image || a.originalImageUrl);
+    const relevant = articles.filter(a => (a.categories && a.categories.length > 0) || a.status === 'COOL FINDS' || a.status === 'M');
+    const withImages = relevant.filter(a => a.image || a.originalImageUrl);
 
-    if (withImages.length === 0) {
-        return alert('No images selected. Select images for articles first.');
-    }
+    if (withImages.length === 0) return alert('No images selected. Select images for articles first.');
+    if (typeof JSZip === 'undefined') return alert('JSZip not loaded. Please refresh the page.');
 
     const zip = new JSZip();
     let done = 0;
@@ -3166,10 +2537,7 @@ window.downloadAllImagesZip = async () => {
             }
 
             // 2. Try to get from current image URL (if local path)
-            if (!filename &&
-                a.image &&
-                !a.image.startsWith('data:') &&
-                !a.image.startsWith('blob:')) {
+            if (!filename && a.image && !a.image.startsWith('data:') && !a.image.startsWith('blob:')) {
                 try {
                     const name = a.image.split('/').pop();
                     if (name && name.includes('.')) {
@@ -3180,15 +2548,9 @@ window.downloadAllImagesZip = async () => {
             }
 
             // 3. Fallback to title
-            const ext =
-                (url.match(/\.(png|jpg|jpeg|gif|webp|svg)/i))
-                    ? url.match(/\.(png|jpg|jpeg|gif|webp|svg)/i)[0]
-                    : '.png';
+            const ext = (url.match(/\.(png|jpg|jpeg|gif|webp|svg)/i)) ? url.match(/\.(png|jpg|jpeg|gif|webp|svg)/i)[0] : '.png';
             if (!filename) {
-                const safeTitle =
-                    (a.title || `article-${i + 1}`)
-                        .replace(/[^a-zA-Z0-9-_]/g, '_')
-                        .slice(0, 40);
+                const safeTitle = (a.title || `article-${i + 1}`).replace(/[^a-zA-Z0-9-_]/g, '_').slice(0, 40);
                 filename = `${safeTitle}${ext}`;
             } else {
                 // Ensure extension is correct if we extracted a name without one (unlikely given checks) or replace if needed?
@@ -3199,14 +2561,8 @@ window.downloadAllImagesZip = async () => {
 
             // Ensure unique filename
             if (usedFilenames.has(filename)) {
-                const namePart =
-                    filename.lastIndexOf('.') > 0
-                        ? filename.substring(0, filename.lastIndexOf('.'))
-                        : filename;
-                const extPart =
-                    filename.lastIndexOf('.') > 0
-                        ? filename.substring(filename.lastIndexOf('.'))
-                        : ext;
+                const namePart = filename.lastIndexOf('.') > 0 ? filename.substring(0, filename.lastIndexOf('.')) : filename;
+                const extPart = filename.lastIndexOf('.') > 0 ? filename.substring(filename.lastIndexOf('.')) : ext;
                 let counter = 1;
                 let newFilename = `${namePart}-${counter}${extPart}`;
                 while (usedFilenames.has(newFilename)) {
@@ -3231,10 +2587,7 @@ window.downloadAllImagesZip = async () => {
                         zip.file(filename, blob);
                     } else {
                         console.warn(`Failed to fetch ${url}: ${res.status}`);
-                        zip.file(
-                            filename + '.txt',
-                            `Failed to download: ${url} (Status: ${res.status})`,
-                        );
+                        zip.file(filename + '.txt', `Failed to download: ${url} (Status: ${res.status})`);
                     }
                 }
             } catch (e) {
@@ -3280,20 +2633,7 @@ window.downloadAllImagesZip = async () => {
 
 window.exportArticlesXls = () => {
     if (articles.length === 0) return alert('No articles to export.');
-    const headers = [
-        'Title',
-        'URL',
-        'Description',
-        'Date',
-        'Status',
-        'Paywall',
-        'MED',
-        'THC',
-        'CBD',
-        'INV',
-        'Notes',
-        'Image URL',
-    ];
+    const headers = ['Title', 'URL', 'Description', 'Date', 'Status', 'Paywall', 'MED', 'THC', 'CBD', 'INV', 'Notes', 'Image URL'];
     const optionalCell = (value) => {
         const text = String(value ?? '').trim();
         return text ? text : undefined;
@@ -3383,9 +2723,7 @@ async function uploadArticlesWorkbook(
         return false;
     }
 
-    if (replacePrompt &&
-        articles.length > 0 &&
-        !confirm(replacePrompt.replace('{count}', articles.length))) {
+    if (replacePrompt && articles.length > 0 && !confirm(replacePrompt.replace('{count}', articles.length))) {
         return false;
     }
 
@@ -3423,11 +2761,7 @@ async function uploadArticlesWorkbook(
             updateStats();
         }
 
-        alert(
-            successMessage
-                .replace('{count}', articles.length)
-                .replace('{name}', data.newsletterName || newsletterName),
-        );
+        alert(successMessage.replace('{count}', articles.length).replace('{name}', data.newsletterName || newsletterName));
         input.value = '';
         return true;
     } catch (err) {
@@ -3459,28 +2793,13 @@ if (fileInput) {
 }
 
 if (articleViewFileInput) {
-    articleViewFileInput.addEventListener('change', () =>
-        updateChosenFileName('article-view-excel-upload', 'article-view-file-name'),
-    );
+    articleViewFileInput.addEventListener('change', () => updateChosenFileName('article-view-excel-upload', 'article-view-file-name'));
 }
 
 const btnLoadTemplate = document.getElementById('btn-load-template');
 if (btnLoadTemplate) {
     btnLoadTemplate.addEventListener('click', () => {
-        const headers = [
-            'Title',
-            'URL',
-            'Description',
-            'Date',
-            'Status',
-            'Paywall',
-            'MED',
-            'THC',
-            'CBD',
-            'INV',
-            'Notes',
-            'Image URL',
-        ];
+        const headers = ['Title', 'URL', 'Description', 'Date', 'Status', 'Paywall', 'MED', 'THC', 'CBD', 'INV', 'Notes', 'Image URL'];
         const ws = XLSX.utils.aoa_to_sheet([headers]);
         ws['!cols'] = headers.map(() => ({ wch: 18 }));
         const wb = XLSX.utils.book_new();
@@ -3527,10 +2846,7 @@ function renderArticles() {
     }
 
     if (articles.length === 0) {
-        list.innerHTML +=
-            '<div class="p-5 text-center text-[#777]">' +
-            '  No articles found. Please try searching again.' +
-            '</div>';
+        list.innerHTML += '<div class="p-5 text-center text-[#777]">No articles found. Please try searching again.</div>';
         updateStats();
         return;
     }
@@ -3539,157 +2855,114 @@ function renderArticles() {
         ? articles.map((a, i) => i).filter(i => articles[i].addedAt === batchFilter)
         : articles.map((a, i) => i);
 
-    list.innerHTML +=
-        indicesToShow
-            .map(realIndex => {
-                const article = articles[realIndex];
-                const index = realIndex;
-                // Ensure defaults
-                if (!article.status) article.status = 'Y';
-                if (!article.categories) {
-                    // Backward compatibility if single category exists
-                    article.categories = article.category ? [article.category] : [];
-                }
-                if (!article.notes) article.notes = article.keyword || ''; // Migration
-                if (article.selected === undefined) article.selected = true;
+    list.innerHTML += indicesToShow.map(realIndex => {
+        const article = articles[realIndex];
+        const index = realIndex;
+        // Ensure defaults
+        if (!article.status) article.status = 'Y';
+        if (!article.categories) {
+            // Backward compatibility if single category exists
+            article.categories = article.category ? [article.category] : [];
+        }
+        if (!article.notes) article.notes = article.keyword || ''; // Migration
+        if (article.selected === undefined) article.selected = true;
 
-                // Checkbox logic for categories
-                const isStatusValid =
-                    ['Y', 'YM', 'M', 'COOL FINDS', 'LATER COOL'].includes(article.status);
-                const disabledAttr = isStatusValid ? '' : 'disabled';
-                const disabledClass = isStatusValid ? '' : 'opacity-50 cursor-not-allowed';
+        // Checkbox logic for categories
+        const isStatusValid = ['Y', 'YM', 'M', 'COOL FINDS', 'LATER COOL'].includes(article.status);
+        const disabledAttr = isStatusValid ? '' : 'disabled';
+        const disabledClass = isStatusValid ? '' : 'opacity-50 cursor-not-allowed';
 
-                const categoryInputs =
-                    ['MED', 'THC', 'CBD', 'INV']
-                        .map(cat => {
-                            let rank = (
-                                article.ranks &&
-                                (article.ranks[cat] ?? article.ranks[cat.toLowerCase()])
-                            ) ?? (article.categories && article.categories.includes(cat)
-                                ? 'Y' :
-                                '');
-                            // Same resolution as getRankForSort so display and sort match (incl. lowercase keys)
+        const categoryInputs = ['MED', 'THC', 'CBD', 'INV'].map(cat => {
+            let rank = (article.ranks && (article.ranks[cat] ?? article.ranks[cat.toLowerCase()])) ?? (article.categories && article.categories.includes(cat) ? 'Y' : '');
+            // Same resolution as getRankForSort so display and sort match (incl. lowercase keys)
 
-                            return `<div class="col-cat">
-                                <input
-                                    type="text"
-                                    value="${rank}"
-                                    oninput="updateCategoryRank(${index}, '${cat}', this.value)"
-                                    class="${disabledClass}"
-                                    ${disabledAttr}
-                                    placeholder="">
-                            </div>`;
-                        }).join('');
+            return `
+                <div class="col-cat">
+                    <input type="text"
+                        value="${rank}"
+                        oninput="updateCategoryRank(${index}, '${cat}', this.value)"
+                        class="${disabledClass}"
+                        ${disabledAttr}
+                        placeholder=""
+                    >
+                </div>
+            `;
+        }).join('');
 
-                return `<div class="article-row">
-                    <div class="col-selected">
-                        <input
-                            type="checkbox"
-                            ${article.selected ? 'checked' : ''}
-                            onchange="updateArticleField(${index}, 'selected', this.checked)">
+        return `
+            <div class="article-row">
+                <div class="col-selected">
+                    <input type="checkbox"
+                        ${article.selected ? 'checked' : ''}
+                        onchange="updateArticleField(${index}, 'selected', this.checked)">
+                </div>
+
+                <div class="col-article">
+                    <div class="flex items-start gap-2">
+                        <textarea
+                            class="title-edit font-[inherit] flex-1 min-w-30"
+                            rows="2"
+                            onchange="updateArticleField(${index}, 'title', this.value)"
+                        >${article.title}</textarea>
+                        <span class="article-added-at" title="${article.addedAt ? 'Added ' + article.addedAt : 'No add date'}">${article.addedAt ? 'added ' + formatAddedAt(article.addedAt) : '—'}</span>
                     </div>
+                    <p class="my-1.25 text-[0.85rem] text-[#666]">
+                        ${article.description ? article.description.substring(0, 120) + '...' : 'No description'}
+                    </p>
 
-                    <div class="col-article">
-                        <div class="flex items-start gap-2">
-                            <textarea
-                                class="title-edit font-[inherit] flex-1 min-w-30"
-                                rows="2"
-                                onchange="updateArticleField(${index}, 'title', this.value)">${article.title}</textarea>
-                            <span
-                                class="article-added-at"
-                                title="${article.addedAt ? 'Added ' + article.addedAt : 'No add date'}">
-                                ${article.addedAt ? 'added ' + formatAddedAt(article.addedAt) : '—'}
-                            </span>
-                        </div>
-                        <p class="my-1.25 text-sm text-[#666]">
-                            ${
-                    article.description
-                        ? article.description.substring(0, 120) + '...'
-                        : 'No description'
-                }
-                        </p>
-
-                        <div class="flex items-center gap-1.25">
-                            <input
-                                type="text"
-                                class="url-edit text-[0.8rem] py-0.5 px-1.25 w-full text-[#2f6e63]"
-                                value="${article.url}"
-                                onchange="updateArticleField(${index}, 'url', this.value)">
-                            <a
-                                href="${article.url}"
-                                target="_blank" title="Open Link" class="no-underline">
-                                🔗
-                            </a>
-                        </div>
-                    </div>
-
-                    <div class="col-date">
+                    <div class="flex items-center gap-1.25">
                         <input
                             type="text"
-                            value="${article.date || ''}"
-                            onchange="updateArticleField(${index}, 'date', this.value)"
-                            placeholder="MM/DD/YY">
+                            class="url-edit text-[0.8rem] py-0.5 px-1.25 w-full text-[#2f6e63]"
+                            value="${article.url}"
+                            onchange="updateArticleField(${index}, 'url', this.value)">
+                        <a href="${article.url}" target="_blank" title="Open Link" class="no-underline">🔗</a>
                     </div>
+                </div>
 
-                    <div class="col-paywall">
-                        <input
-                            type="checkbox"
-                            ${article.paywall ? 'checked' : ''}
-                            onchange="updateArticleField(${index}, 'paywall', this.checked)">
-                    </div>
+                <div class="col-date">
+                    <input type="text"
+                        value="${article.date || ''}"
+                        onchange="updateArticleField(${index}, 'date', this.value)"
+                        placeholder="MM/DD/YY"
+                    >
+                </div>
 
-                    <div class="col-status">
+                <div class="col-paywall">
+                    <input type="checkbox"
+                        ${article.paywall ? 'checked' : ''}
+                        onchange="updateArticleField(${index}, 'paywall', this.checked)">
+                </div>
+
+                <div class="col-status">
                         <select onchange="updateArticleField(${index}, 'status', this.value)">
-                            <option value="">Status...</option>
-                            <option value="Y" ${article.status === 'Y' ? 'selected' : ''}>
-                                Y
-                            </option>
-                            <option value="YM" ${article.status === 'YM' ? 'selected' : ''}>
-                                YM
-                            </option>
-                            <option value="M" ${article.status === 'M' ? 'selected' : ''}>
-                                M
-                            </option>
-                            <option value="NO" ${article.status === 'NO' ? 'selected' : ''}>
-                                NO
-                            </option>
-                            <option
-                                value="COOL FINDS"
-                                ${article.status === 'COOL FINDS' ? 'selected' : ''}>
-                                COOL FINDS
-                            </option>
-                            <option
-                                value="LATER COOL"
-                                ${article.status === 'LATER COOL' ? 'selected' : ''}>
-                                Later Cool
-                            </option>
-                        </select>
-                    </div>
+                        <option value="">Status...</option>
+                        <option value="Y" ${article.status === 'Y' ? 'selected' : ''}>Y</option>
+                        <option value="YM" ${article.status === 'YM' ? 'selected' : ''}>YM</option>
+                        <option value="M" ${article.status === 'M' ? 'selected' : ''}>M</option>
+                        <option value="NO" ${article.status === 'NO' ? 'selected' : ''}>NO</option>
+                        <option value="COOL FINDS" ${article.status === 'COOL FINDS' ? 'selected' : ''}>COOL FINDS</option>
+                        <option value="LATER COOL" ${article.status === 'LATER COOL' ? 'selected' : ''}>Later Cool</option>
+                    </select>
+                </div>
 
-                    ${categoryInputs}
+                ${categoryInputs}
 
-                    <div class="col-keyword">
-                        <textarea
-                            class="form-control w-full h-15 text-sm resize-y"
-                            onchange="updateArticleField(${index}, 'notes', this.value)"
-                            placeholder="Notes..."
-                        >${article.notes || ''}</textarea>
-                    </div>
+                <div class="col-keyword">
+                    <textarea
+                        class="form-control w-full h-15 text-[0.85rem] resize-y"
+                        onchange="updateArticleField(${index}, 'notes', this.value)"
+                        placeholder="Notes..."
+                    >${article.notes || ''}</textarea>
+                </div>
 
-                    <div class="col-actions">
-                        <button
-                            class="btn btn-sm btn-outline text-[#f57c00] border-[#f57c00] mb-2 w-full"
-                            onclick="archiveArticle(${index})">
-                            Archive
-                        </button>
-                        <button
-                            class="btn btn-sm btn-outline text-[#d32f2f] border-[#d32f2f] w-full"
-                            onclick="removeArticle(${index})">
-                            Remove
-                        </button>
-                    </div>
-                </div>`;
-            }).join('');
+                <div class="col-actions">
+                    <button class="btn btn-sm btn-outline text-[#f57c00] border-[#f57c00] mb-2 w-full" onclick="archiveArticle(${index})">Archive</button>
+                    <button class="btn btn-sm btn-outline text-[#d32f2f] border-[#d32f2f] w-full" onclick="removeArticle(${index})">Remove</button>
+                </div>
+            </div>
+        `;
+    }).join('');
 
     updateStats();
     highlightLongTitles();
@@ -3965,18 +3238,17 @@ function getSummaryArticlesForCategory(category) {
 
 // Articles shown in Confirmation/final newsletter: broader ranked + selected article set.
 function getArticlesForCategory(category) {
-    return articles
-        .filter(a => {
-            if (!['Y', 'YM', 'COOL FINDS', 'LATER COOL'].includes(a.status)) return false;
-            if (a.selected === false) return false;
-            const rank = getRankForSort(a, category);
-            return rank !== '' && rank !== undefined;
-        }).sort((a, b) => {
-            const rA = rankToSortValue(getRankForSort(a, category));
-            const rB = rankToSortValue(getRankForSort(b, category));
-            if (rA !== rB) return rA - rB;
-            return (a.title || '').localeCompare(b.title || '');
-        });
+    return articles.filter(a => {
+        if (!['Y', 'YM', 'COOL FINDS', 'LATER COOL'].includes(a.status)) return false;
+        if (a.selected === false) return false;
+        const rank = getRankForSort(a, category);
+        return rank !== '' && rank !== undefined;
+    }).sort((a, b) => {
+        const rA = rankToSortValue(getRankForSort(a, category));
+        const rB = rankToSortValue(getRankForSort(b, category));
+        if (rA !== rB) return rA - rB;
+        return (a.title || '').localeCompare(b.title || '');
+    });
 }
 
 function getSelectedRankCounts() {
@@ -4000,23 +3272,18 @@ function updateStats() {
     });
 
     const sessionLabel = currentSessionName
-        ? `<span class="stat-item bg-[#e8eaf6] text-[#283593] font-semibold">
-            ${currentSessionName}
-        </span>`
+        ? `<span class="stat-item bg-[#e8eaf6] text-[#283593] font-semibold">${currentSessionName}</span>`
         : '';
 
-    const statsHtml =
-        `${sessionLabel}
+    const statsHtml = `
+        ${sessionLabel}
         <span class="stat-item" title="Total articles in list">Total: ${articles.length}</span>
-        <span
-            class="stat-item bg-[#e0f7fa] text-[#006064]"
-            title="Articles checked in the Select column">
-            Selected: ${selectedCount}
-        </span>
+        <span class="stat-item bg-[#e0f7fa] text-[#006064]" title="Articles checked in the Select column">Selected: ${selectedCount}</span>
         <span class="stat-item bg-[#e3f2fd] text-[#0d47a1]">MED: ${counts.MED}</span>
         <span class="stat-item bg-[#e8f5e9] text-[#1b5e20]">THC: ${counts.THC}</span>
         <span class="stat-item bg-[#fff3e0] text-[#e65100]">CBD: ${counts.CBD}</span>
-        <span class="stat-item bg-[#f3e5f5] text-[#4a148c]">INV: ${counts.INV}</span>`;
+        <span class="stat-item bg-[#f3e5f5] text-[#4a148c]">INV: ${counts.INV}</span>
+    `;
     statsEl.innerHTML = statsHtml;
     const footerEl = document.getElementById('article-stats-footer');
     if (footerEl) footerEl.innerHTML = statsHtml;
@@ -4090,10 +3357,7 @@ window.loadSession = () => {
     const session = sessions[name];
     if (!session) return alert('Session not found.');
 
-    if (articles.length > 0 &&
-        !confirm(`This will replace the current ${articles.length} articles. Continue?`)) {
-        return;
-    }
+    if (articles.length > 0 && !confirm(`This will replace the current ${articles.length} articles. Continue?`)) return;
 
     articles = session.articles || [];
     const savedAt = session.savedAt || new Date().toISOString();
@@ -4149,14 +3413,12 @@ function populateSavedDropdown() {
     const sessions = getSavedSessions();
     const names = Object.keys(sessions).sort();
 
-    const optionsHtml =
-        names
-            .map(name => {
-                const s = sessions[name];
-                const count = (s.articles || []).length;
-                const date = s.savedAt ? new Date(s.savedAt).toLocaleDateString() : '';
-                return `<option value="${name}">${name} (${count} articles, ${date})</option>`;
-            }).join('');
+    const optionsHtml = names.map(name => {
+        const s = sessions[name];
+        const count = (s.articles || []).length;
+        const date = s.savedAt ? new Date(s.savedAt).toLocaleDateString() : '';
+        return `<option value="${name}">${name} (${count} articles, ${date})</option>`;
+    }).join('');
 
     if (dropdownStep1) {
         dropdownStep1.innerHTML = '<option value="">Saved newsletters</option>' + optionsHtml;
@@ -4179,10 +3441,8 @@ function populateSavedDropdown() {
     const textEl = document.getElementById('state-load-hint-text');
     if (hintEl && names.length === 0) {
         showWithClass(hintEl, 'block');
-        if (textEl &&
-            textEl.textContent === 'Loading…' &&
-            typeof window.updateStateHintFromDiagnostic === 'function') {
-            window.updateStateHintFromDiagnostic();
+        if (textEl && textEl.textContent === 'Loading…') {
+            if (typeof window.updateStateHintFromDiagnostic === 'function') window.updateStateHintFromDiagnostic();
         }
     }
 }
@@ -4222,9 +3482,7 @@ window.pushStateToServer = async function () {
                 body: JSON.stringify({ key: 'sessions', value: sessions }),
             }),
         ];
-        if (lastGeneratedNewsletter &&
-            lastGeneratedNewsletter.meta &&
-            lastGeneratedNewsletter.meta.name) {
+        if (lastGeneratedNewsletter && lastGeneratedNewsletter.meta && lastGeneratedNewsletter.meta.name) {
             requests.push(
                 fetch('/api/newsletters', {
                     method: 'POST',
@@ -4249,25 +3507,10 @@ window.pushStateToServer = async function () {
         if (failed.length === 0) {
             persistWorkspaceLocal(workspace);
             localStorage.setItem('newsletter_saved_sessions', JSON.stringify(sessions));
-            currentSessionName =
-                currentSessionName ||
-                document.getElementById('newsletter-name')?.value.trim() ||
-                '';
+            currentSessionName = currentSessionName || document.getElementById('newsletter-name')?.value.trim() || '';
             populateSavedDropdown();
             const generatedNote = lastGeneratedNewsletter ? ', generated newsletter synced' : '';
-            alert(
-                'Pushed to server: ' +
-                articles.length +
-                ' articles, ' +
-                archivedArticles.length +
-                ' archived, ' +
-                laterCoolArticles.length +
-                ' later cool, ' +
-                Object.keys(sessions).length +
-                ' saved session(s)' +
-                generatedNote +
-                '.',
-            );
+            alert('Pushed to server: ' + articles.length + ' articles, ' + archivedArticles.length + ' archived, ' + laterCoolArticles.length + ' later cool, ' + Object.keys(sessions).length + ' saved session(s)' + generatedNote + '.');
         } else {
             alert('Push failed: ' + failed.join('; '));
         }
@@ -4317,9 +3560,7 @@ window.refreshStateFromServer = async function () {
                 applyWorkspaceState(value, { mergeLibrary: true });
                 if (typeof renderArticles === 'function') renderArticles();
                 const activeStep = document.querySelector('.step.active');
-                if (activeStep &&
-                    activeStep.getAttribute('data-step') === '3' &&
-                    typeof renderImagesView === 'function') {
+                if (activeStep && activeStep.getAttribute('data-step') === '3' && typeof renderImagesView === 'function') {
                     renderImagesView();
                 }
                 msg = (value.articles || []).length + ' articles in workspace. ';
@@ -4339,36 +3580,23 @@ window.refreshStateFromServer = async function () {
                 const local = JSON.parse(localStorage.getItem('newsletter_saved_sessions') || '{}');
                 const merged = { ...value };
                 Object.keys(local).forEach(k => {
-                    if (!(k in merged)) {
-                        merged[k] = local[k];
-                    }
+                    if (!(k in merged)) merged[k] = local[k];
                 });
                 localStorage.setItem('newsletter_saved_sessions', JSON.stringify(merged));
                 if (typeof populateSavedDropdown === 'function') populateSavedDropdown();
                 const n = Object.keys(merged).length;
                 msg += n + ' saved session(s) (server + local).';
-                if (hintEl) {
-                    hideWithClass(hintEl);
-                }
+                if (hintEl) hideWithClass(hintEl);
             }
         } else if (sessRes.status === 503) {
             msg = (msg || '') + 'Sessions: server database not configured.';
-            if (hintEl) {
-                showWithClass(hintEl, 'block');
-            }
+            if (hintEl) showWithClass(hintEl, 'block');
             await window.updateStateHintFromDiagnostic();
         }
         alert(msg || 'No data from server. Check the yellow hint above for details.');
     } catch (e) {
-        if (hintEl) {
-            showWithClass(hintEl, 'block');
-        }
-        if (textEl) {
-            textEl.textContent =
-                'Could not reach server: ' +
-                (e.message || 'network error') +
-                '. Check that the API is deployed (e.g. Vercel runs the Express server).';
-        }
+        if (hintEl) showWithClass(hintEl, 'block');
+        if (textEl) textEl.textContent = 'Could not reach server: ' + (e.message || 'network error') + '. Check that the API is deployed (e.g. Vercel runs the Express server).';
         alert('Could not reach server: ' + (e.message || 'network error'));
     }
 };
@@ -4464,9 +3692,7 @@ async function searchMoreArticles() {
 }
 
 function normalizeUrl(url) {
-    if (!url) {
-        return '';
-    }
+    if (!url) return '';
     return url.replace(/^https?:\/\//, '').replace(/\/+$/, '').toLowerCase();
 }
 
@@ -4474,14 +3700,10 @@ function normalizeUrl(url) {
 
 async function modifyExistingArticles() {
     const prompt = document.getElementById('step2-query').value.trim();
-    if (!prompt) {
-        return alert('Please enter a modification instruction.');
-    }
+    if (!prompt) return alert('Please enter a modification instruction.');
 
     const selectedIndices = articles.map((a, i) => a.selected ? i : -1).filter(i => i !== -1);
-    if (selectedIndices.length === 0) {
-        return alert('No articles selected. Check the boxes on articles you want to modify.');
-    }
+    if (selectedIndices.length === 0) return alert('No articles selected. Check the boxes on articles you want to modify.');
 
     const selectedArticles = selectedIndices.map(i => articles[i]);
     const btn = document.getElementById('btn-step2-query');
@@ -4507,18 +3729,10 @@ async function modifyExistingArticles() {
             data.articles.forEach((modArticle, i) => {
                 const originalIndex = selectedIndices[i];
                 if (articles[originalIndex]) {
-                    if (modArticle.title) {
-                        articles[originalIndex].title = modArticle.title;
-                    }
-                    if (modArticle.description) {
-                        articles[originalIndex].description = modArticle.description;
-                    }
-                    if (modArticle.url) {
-                        articles[originalIndex].url = modArticle.url;
-                    }
-                    if (modArticle.date) {
-                        articles[originalIndex].date = modArticle.date;
-                    }
+                    if (modArticle.title) articles[originalIndex].title = modArticle.title;
+                    if (modArticle.description) articles[originalIndex].description = modArticle.description;
+                    if (modArticle.url) articles[originalIndex].url = modArticle.url;
+                    if (modArticle.date) articles[originalIndex].date = modArticle.date;
                 }
             });
             saveState();
@@ -4608,10 +3822,7 @@ if (searchBtn) {
         }
 
         if (articles.length > 0) {
-            if (!confirm(
-                `This will replace the ${articles.length} articles currently in the workspace.\n\n ` +
-                "Make sure you've saved first if you need them.\n\nContinue?",
-            )) {
+            if (!confirm(`This will replace the ${articles.length} articles currently in the workspace.\n\nMake sure you've saved first if you need them.\n\nContinue?`)) {
                 return;
             }
         }
@@ -4619,10 +3830,10 @@ if (searchBtn) {
         saveRecentPrompt(prompt);
         currentSessionName = '';
 
-        console.log('Initiating AI Search...', { newsletterName, prompt, model });
+        console.log("Initiating AI Search...", { newsletterName, prompt, model });
 
         searchBtn.disabled = true;
-        searchBtn.textContent = 'Searching...';
+        searchBtn.textContent = "Searching...";
         if (searchStatus) hideWithClass(searchStatus);
 
         try {
@@ -4647,19 +3858,17 @@ if (searchBtn) {
                 if (nextStep2Btn) {
                     showWithClass(nextStep2Btn, 'inline-block');
                 }
+
             } else {
                 // Show specific error message from backend (e.g. "Credit balance too low")
                 const clarification = await getAiClarificationFromError(data);
                 const details = clarification || String(data.details || '').trim();
-                alert('Search Error:\n' + (details || data.error || 'Unknown error'));
+                alert("Search Error:\n" + (details || data.error || 'Unknown error'));
                 if (data.details) console.error("Error Details:", data.details);
             }
         } catch (err) {
             console.error("Network/Parsing Error:", err);
-            alert(
-                'Search failed. Please check your connection and try again.\n' +
-                'See console for details.',
-            );
+            alert("Search failed. Please check your connection and try again.\nSee console for details.");
         } finally {
             searchBtn.disabled = false;
             searchBtn.textContent = "Find Articles";
@@ -4675,8 +3884,7 @@ if (uploadBtn) {
             inputId: 'excel-upload',
             buttonId: 'btn-upload-file',
             buttonLabel: 'Upload & Load',
-            replacePrompt:
-                'This will replace the current {count} articles in your workspace. Continue?',
+            replacePrompt: 'This will replace the current {count} articles in your workspace. Continue?',
             successMessage: 'Loaded {count} articles for "{name}".',
             switchToStep2: true,
         });
@@ -4693,11 +3901,8 @@ if (articleViewUploadBtn) {
             inputId: 'article-view-excel-upload',
             buttonId: 'btn-article-view-upload',
             buttonLabel: 'Upload XLS Here',
-            replacePrompt:
-                'This will replace the current {count} articles shown in Article View and clear ' +
-                'archived/later-cool lists. Continue?',
-            successMessage:
-                'Restored {count} articles into "{name}". You can continue from Article View now.',
+            replacePrompt: 'This will replace the current {count} articles shown in Article View and clear archived/later-cool lists. Continue?',
+            successMessage: 'Restored {count} articles into "{name}". You can continue from Article View now.',
         });
         if (success) {
             updateChosenFileName('article-view-excel-upload', 'article-view-file-name');
