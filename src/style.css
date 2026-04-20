@@ -135,7 +135,7 @@
 }
 
 .date-input label {
-  @apply text-[0.85rem] font-semibold text-[#555] uppercase tracking-[0.5px];
+  @apply text-sm font-semibold text-[#555] uppercase tracking-[0.5px];
 }
 
 /* Form Elements */
@@ -174,7 +174,7 @@ input[type="text"], input[type="date"], input[type="file"], textarea, select {
 }
 
 .btn-sm {
-  @apply py-2 px-4 text-[0.85rem];
+  @apply py-2 px-4 text-sm;
 }
 
 /* File Input */
@@ -411,7 +411,7 @@ input[type="text"], input[type="date"], input[type="file"], textarea, select {
 }
 
 .article-added-at {
-  @apply text-[0.75rem] text-[#475569] whitespace-nowrap shrink-0 py-1 px-2 bg-[#eef2f7] rounded-full border border-solid border-[#dde5ef];
+  @apply text-xs text-[#475569] whitespace-nowrap shrink-0 py-1 px-2 bg-[#eef2f7] rounded-full border border-solid border-[#dde5ef];
 }
 
 .col-date {
@@ -419,7 +419,7 @@ input[type="text"], input[type="date"], input[type="file"], textarea, select {
 }
 
 .col-date input {
-  @apply w-full text-center py-1.5 px-1 border border-solid border-[#d8dee8] rounded-lg text-[0.85rem] bg-white;
+  @apply w-full text-center py-1.5 px-1 border border-solid border-[#d8dee8] rounded-lg text-sm bg-white;
 }
 
 .url-edit {
@@ -431,7 +431,7 @@ input[type="text"], input[type="date"], input[type="file"], textarea, select {
 }
 
 .col-status select {
-  @apply w-full py-1.75 px-2 text-[0.85rem] border border-solid border-[#d8dee8] rounded-lg bg-white;
+  @apply w-full py-1.75 px-2 text-sm border border-solid border-[#d8dee8] rounded-lg bg-white;
 }
 
 .col-cat {
@@ -443,7 +443,7 @@ input[type="text"], input[type="date"], input[type="file"], textarea, select {
 }
 
 .col-keyword textarea {
-  @apply w-full py-2 px-2.5 text-[0.85rem] border border-solid border-[#d8dee8] rounded-[10px] bg-white;
+  @apply w-full py-2 px-2.5 text-sm border border-solid border-[#d8dee8] rounded-[10px] bg-white;
 }
 
 .col-actions {
@@ -451,12 +451,12 @@ input[type="text"], input[type="date"], input[type="file"], textarea, select {
 }
 
 .article-link {
-  @apply text-[#2196F3] no-underline text-[0.85rem] hover:underline;
+  @apply /*text-[#2196F3]*/ no-underline text-sm hover:underline;
 }
 
 /* Badges */
 .badge {
-  @apply py-1 px-2 rounded-sm text-[0.75rem] font-bold bg-[#eee] text-[#666] mr-1.25;
+  @apply py-1 px-2 rounded-sm text-xs font-bold bg-[#eee] text-[#666] mr-1.25;
 }
 
 .badge-active {
@@ -515,7 +515,7 @@ input[type="text"], input[type="date"], input[type="file"], textarea, select {
 }
 
 .article-link-sm {
-  @apply text-[0.8rem] text-[#2196F3] underline break-all;
+  @apply text-[0.8rem] /*text-[#2196F3]*/ underline break-all;
 }
 
 .selected-image-container {
@@ -607,7 +607,7 @@ input[type="text"], input[type="date"], input[type="file"], textarea, select {
 }
 
 .insp-selected-caption {
-  @apply mt-3 text-[0.85rem] text-[#475569] font-semibold;
+  @apply mt-3 text-sm text-[#475569] font-semibold;
 }
 
 /* Tabs */

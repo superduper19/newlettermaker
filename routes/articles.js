@@ -1,14 +1,14 @@
-const express = require('express');
-const router = express.Router();
-const multer = require('multer');
-const xlsx = require('xlsx');
-const Anthropic = require('@anthropic-ai/sdk');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const fs = require('fs');
-const path = require('path');
+import Anthropic from '@anthropic-ai/sdk';
+import { Router } from 'express';
+import multer, { memoryStorage } from 'multer';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { read, utils } from 'xlsx';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
+const router = Router();
 // Configure Multer for memory storage
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ storage: memoryStorage() });
 
 // Initialize Anthropic Client
 const anthropic = new Anthropic({
@@ -36,7 +36,10 @@ const cleanArticleData = (row, index) => {
     const date = getCell(row, 'Date', 'date');
     const notes = getCell(row, 'Notes', 'notes');
     const paywallVal = row.Paywall ?? row.paywall ?? '';
-    const paywall = paywallVal === true || String(paywallVal).toLowerCase() === 'yes' || String(paywallVal).toLowerCase() === 'y';
+    const paywall =
+        paywallVal === true ||
+        String(paywallVal).toLowerCase() === 'yes' ||
+        String(paywallVal).toLowerCase() === 'y';
     const status = getCell(row, 'Status', 'status') || 'Y';
     const imageUrl = getCell(row, 'Image URL', 'Image URL', 'image', 'Image');
 
@@ -45,7 +48,10 @@ const cleanArticleData = (row, index) => {
         const v = row[cat];
         if (v !== undefined && v !== null && String(v).trim() !== '') ranks[cat] = String(v).trim();
     });
-    const categories = Object.keys(ranks).length ? Object.keys(ranks) : (row.Category || row.category ? [row.Category || row.category] : []);
+    const categories =
+        Object.keys(ranks).length
+            ? Object.keys(ranks)
+            : (row.Category || row.category ? [row.Category || row.category] : []);
 
     return {
         id: index + 1,
@@ -92,18 +98,20 @@ const verifyAndAnalyzeUrl = async (url) => {
         // 403/401/429/5xx might be valid URLs blocking bots.
         // We'll mark them valid but content-less so we don't discard real news.
         if (!response.ok) {
-            console.log(`URL ${url} returned ${response.status}. Treating as valid but unreadable.`);
+            console.log(
+                `URL ${url} returned ${response.status}. Treating as valid but unreadable.`,
+            );
             return { isValid: true, isReadable: false, content: '' };
         }
 
         const text = await response.text();
         // Simple extraction of body text (stripping tags)
         const content = text.replace(/<script[^>]*>([\S\s]*?)<\/script>/gmi, '')
-                            .replace(/<style[^>]*>([\S\s]*?)<\/style>/gmi, '')
-                            .replace(/<[^>]+>/g, ' ')
-                            .replace(/\s+/g, ' ')
-                            .trim()
-                            .substring(0, 15000); // Limit to 15k chars for LLM
+            .replace(/<style[^>]*>([\S\s]*?)<\/style>/gmi, '')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .substring(0, 15000); // Limit to 15k chars for LLM
 
         return { isValid: true, isReadable: true, content };
     } catch (error) {
@@ -170,7 +178,20 @@ const categorizeArticle = (article, content) => {
     // 1. THC Newsletter (Column I)
     // Covers: Rec/Med legalization, policy, industry, culture, science, consumer trends.
     // Exclude: Local ordinances, small busts, intl busts, anti-cannabis.
-    const thcKeywords = ['marijuana', 'cannabis', 'legalization', 'legalize', 'dispensary', 'adult-use', 'recreational', 'potency', 'strain', 'rescheduling', 'descheduling', 'safer banking'];
+    const thcKeywords = [
+        'marijuana',
+        'cannabis',
+        'legalization',
+        'legalize',
+        'dispensary',
+        'adult-use',
+        'recreational',
+        'potency',
+        'strain',
+        'rescheduling',
+        'descheduling',
+        'safer banking',
+    ];
     const thcMatch = thcKeywords.filter(k => fullText.includes(k)).length;
 
     const psychKeywords = ['psychedelic', 'psilocybin', 'magic mushroom', 'mdma', 'ketamine'];
@@ -178,7 +199,9 @@ const categorizeArticle = (article, content) => {
 
     if (thcMatch >= 2 || psychMatch >= 1) {
         // Exclusion: "Local city ordinances"
-        if (!fullText.includes('city council') && !fullText.includes('zoning board') && !fullText.includes('planning commission')) {
+        if (!fullText.includes('city council') &&
+            !fullText.includes('zoning board') &&
+            !fullText.includes('planning commission')) {
             addCat('THC', thcMatch >= 3 ? 'Y' : 'YM');
         }
     }
@@ -186,7 +209,18 @@ const categorizeArticle = (article, content) => {
     // 2. CBD Newsletter (Column J)
     // Covers: Hemp farming, CBD products, Delta-8/10, THCA, CBG, CBN, hemp supply chain.
     // Exclude: Ads, generic "CBD helps X", pure PR.
-    const cbdKeywords = ['hemp', 'cbd', 'cannabidiol', 'delta-8', 'delta-10', 'thca', 'cbg', 'cbn', 'farm bill', 'usda hemp'];
+    const cbdKeywords = [
+        'hemp',
+        'cbd',
+        'cannabidiol',
+        'delta-8',
+        'delta-10',
+        'thca',
+        'cbg',
+        'cbn',
+        'farm bill',
+        'usda hemp',
+    ];
     const cbdMatch = cbdKeywords.filter(k => fullText.includes(k)).length;
 
     if (cbdMatch >= 1) {
@@ -196,8 +230,8 @@ const categorizeArticle = (article, content) => {
         if (fullText.includes('hemp-derived') || fullText.includes('farm bill')) {
             addCat('CBD', 'Y');
         } else if (fullText.includes('marijuana') && !fullText.includes('hemp')) {
-             // Likely THC/Med
-             addCat('THC', 'YM');
+            // Likely THC/Med
+            addCat('THC', 'YM');
         } else {
             addCat('CBD', cbdMatch >= 2 ? 'Y' : 'YM');
         }
@@ -206,16 +240,45 @@ const categorizeArticle = (article, content) => {
     // 3. INV Newsletter (Column K)
     // Covers: M&A, stocks, fundraising, major operator news, international news.
     // Exclude: Small PR, local revenue.
-    const invKeywords = ['merger', 'acquisition', 'stock', 'invest', 'revenue', 'profit', 'earnings', 'capital', 'funding', 'raise', 'ipo', 'nasdaq', 'nyse', 'tsx', 'cse', 'mso', 'multi-state operator'];
+    const invKeywords = [
+        'merger',
+        'acquisition',
+        'stock',
+        'invest',
+        'revenue',
+        'profit',
+        'earnings',
+        'capital',
+        'funding',
+        'raise',
+        'ipo',
+        'nasdaq',
+        'nyse',
+        'tsx',
+        'cse',
+        'mso',
+        'multi-state operator',
+    ];
     const invMatch = invKeywords.filter(k => fullText.includes(k)).length;
 
     // International news goes here
-    const intlKeywords = ['germany', 'canada', 'europe', 'australia', 'colombia', 'thailand', 'international'];
+    const intlKeywords = [
+        'germany',
+        'canada',
+        'europe',
+        'australia',
+        'colombia',
+        'thailand',
+        'international',
+    ];
     const intlMatch = intlKeywords.filter(k => fullText.includes(k)).length;
 
     if (invMatch >= 1 || (intlMatch >= 1 && fullText.includes('cannabis'))) {
-        if (fullText.includes('acquisition') || fullText.includes('merger') || fullText.includes('raise') || fullText.includes('funding')) {
-             addCat('INV', 'Y');
+        if (fullText.includes('acquisition') ||
+            fullText.includes('merger') ||
+            fullText.includes('raise') ||
+            fullText.includes('funding')) {
+            addCat('INV', 'Y');
         } else {
             addCat('INV', invMatch >= 2 ? 'Y' : 'YM');
         }
@@ -224,14 +287,34 @@ const categorizeArticle = (article, content) => {
     // 4. MED Newsletter (Column E)
     // Covers: Opioid crisis, clinical trials, research, patient access, FDA.
     // Exclude: Future studies, anti-cannabis scares.
-    const medKeywords = ['clinical trial', 'study', 'research', 'patient', 'treatment', 'disease', 'cancer', 'epilepsy', 'pain', 'autism', 'ptsd', 'opioid', 'fentanyl', 'overdose', 'fda', 'nih'];
+    const medKeywords = [
+        'clinical trial',
+        'study',
+        'research',
+        'patient',
+        'treatment',
+        'disease',
+        'cancer',
+        'epilepsy',
+        'pain',
+        'autism',
+        'ptsd',
+        'opioid',
+        'fentanyl',
+        'overdose',
+        'fda',
+        'nih',
+    ];
     const medMatch = medKeywords.filter(k => fullText.includes(k)).length;
 
     if (medMatch >= 2) {
-        if (fullText.includes('results') || fullText.includes('findings') || fullText.includes('published in') || fullText.includes('journal')) {
+        if (fullText.includes('results') ||
+            fullText.includes('findings') ||
+            fullText.includes('published in') ||
+            fullText.includes('journal')) {
             addCat('MED', 'Y');
         } else {
-             addCat('MED', 'YM');
+            addCat('MED', 'YM');
         }
     }
 
@@ -249,11 +332,11 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
         const newsletterName = req.body.newsletterName || 'Week 1';
 
-        const workbook = xlsx.read(req.file.buffer, { type: 'buffer', cellDates: true });
+        const workbook = read(req.file.buffer, { type: 'buffer', cellDates: true });
         const sheetName = workbook.SheetNames[0];
         if (!sheetName) return res.status(400).json({ error: 'Excel file has no sheets' });
         const sheet = workbook.Sheets[sheetName];
-        const rawData = xlsx.utils.sheet_to_json(sheet, { defval: '', raw: false });
+        const rawData = utils.sheet_to_json(sheet, { defval: '', raw: false });
 
         const isRowEmpty = (row) => {
             const t = getCell(row, 'Title', 'title', 'Article', 'article');
@@ -266,7 +349,9 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         if (articles.length === 0) {
             return res.status(400).json({
                 success: false,
-                error: 'No articles found. Ensure the sheet has a header row and columns like Title, URL (or Article, Link). Download the template for the expected format.',
+                error:
+                    'No articles found. Ensure the sheet has a header row and columns like ' +
+                    'Title, URL (or Article, Link). Download the template for the expected format.',
             });
         }
 
@@ -280,7 +365,10 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         });
     } catch (error) {
         console.error('Error processing Excel:', error);
-        res.status(500).json({ success: false, error: error.message || 'Failed to process Excel file' });
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to process Excel file',
+        });
     }
 });
 
@@ -331,7 +419,8 @@ const extractJSON = (text) => {
                     const candidate = source.slice(start, i + 1);
                     try {
                         objects.push(JSON.parse(candidate));
-                    } catch (e) { /* skip invalid object */ }
+                    } catch (e) { /* skip invalid object */
+                    }
                     start = -1;
                 }
             }
@@ -343,14 +432,24 @@ const extractJSON = (text) => {
     // 1. Direct parse
     try {
         return JSON.parse(text);
-    } catch (e) { /* continue */ }
+    } catch (e) { /* continue */
+    }
 
     // 2. Find JSON array within text
     const match = text.match(/\[([\s\S]*)\]/);
     if (match) {
-        try { return JSON.parse(match[0]); } catch (e2) { /* continue */ }
-        try { return JSON.parse(match[0] + ']'); } catch (e3) { /* continue */ }
-        try { return JSON.parse(match[0] + '}]'); } catch (e4) { /* continue */ }
+        try {
+            return JSON.parse(match[0]);
+        } catch (e2) { /* continue */
+        }
+        try {
+            return JSON.parse(match[0] + ']');
+        } catch (e3) { /* continue */
+        }
+        try {
+            return JSON.parse(match[0] + '}]');
+        } catch (e4) { /* continue */
+        }
 
         // 3. Extract individual JSON objects from within the array
         const objects = extractObjectsFromText(match[0]);
@@ -376,7 +475,10 @@ const extractJSON = (text) => {
     const dates = [...text.matchAll(dateRegex)].map(m => m[1].trim());
 
     if (titles.length > 0 && urls.length > 0) {
-        console.log(`extractJSON: Falling back to markdown parser — found ${titles.length} titles, ${urls.length} urls`);
+        console.log(
+            'extractJSON: Falling back to markdown parser — ' +
+            `found ${titles.length} titles, ${urls.length} urls`,
+        );
         for (let i = 0; i < Math.min(titles.length, urls.length); i++) {
             articles.push({
                 title: titles[i],
@@ -398,7 +500,7 @@ const MODEL_MAPPING = {
     'claude-sonnet-4-6': 'claude-sonnet-4-6',
     'claude-haiku-4-5': 'claude-haiku-4-5-20251001',
     'gemini-flash-3-0': 'gemini-3-flash-preview',
-    'gemini-flash-3-1-pro': 'gemini-3.1-pro-preview' // Updated based on earlier fix, verifying...
+    'gemini-flash-3-1-pro': 'gemini-3.1-pro-preview', // Updated based on earlier fix, verifying...
 };
 
 // Helper to get API Model ID
@@ -411,15 +513,15 @@ function parseAIError(error) {
     // Check if message looks like an HTTP error with JSON body (common with Anthropic SDK)
     // e.g. "400 {"type":"error","error":{"type":"invalid_request_error","message":"..."}}"
     if (/^\d{3}\s+\{/.test(message)) {
-         try {
-             const jsonPart = message.substring(message.indexOf('{'));
-             const parsed = JSON.parse(jsonPart);
-             if (parsed.error && parsed.error.message) {
-                 return parsed.error.message;
-             }
-         } catch (e) {
-             // Parsing failed, return original
-         }
+        try {
+            const jsonPart = message.substring(message.indexOf('{'));
+            const parsed = JSON.parse(jsonPart);
+            if (parsed.error && parsed.error.message) {
+                return parsed.error.message;
+            }
+        } catch (e) {
+            // Parsing failed, return original
+        }
     }
 
     // Check for nested error object
@@ -434,18 +536,30 @@ function parseAIError(error) {
 router.post('/search', async (req, res) => {
     try {
         const { prompt, newsletterName, model } = req.body;
-        console.log(`Received search request: "${prompt}" for ${newsletterName} using model ${model}`);
+        console.log(
+            `Received search request: "${prompt}" for ${newsletterName} using model ${model}`,
+        );
 
         // Use mock data if requested (for testing without burning credits)
         if (prompt.toLowerCase().includes('mock data')) {
-             console.log("Mock data requested.");
-             return res.json({
-                 success: true,
-                 articles: [
-                     { title: "Mock Article 1", description: "This is a test article.", url: "https://example.com/1", category: "MED" },
-                     { title: "Mock Article 2", description: "Another test article.", url: "https://example.com/2", category: "THC" },
-                 ]
-             });
+            console.log('Mock data requested.');
+            return res.json({
+                success: true,
+                articles: [
+                    {
+                        title: 'Mock Article 1',
+                        description: 'This is a test article.',
+                        url: 'https://example.com/1',
+                        category: 'MED',
+                    },
+                    {
+                        title: 'Mock Article 2',
+                        description: 'Another test article.',
+                        url: 'https://example.com/2',
+                        category: 'THC',
+                    },
+                ],
+            });
         }
 
         console.log(`Searching articles with model ${model} for "${newsletterName}"`);
@@ -481,31 +595,34 @@ Example format:
                 content = response.text();
             } catch (geminiError) {
                 console.error("Gemini API Error:", geminiError);
-                return res.status(500).json({ error: parseAIError(geminiError), details: geminiError.message });
+                return res.status(500).json({
+                    error: parseAIError(geminiError),
+                    details: geminiError.message,
+                });
             }
-
         } else {
             const message = await anthropic.messages.create({
                 model: apiModel,
                 max_tokens: 8000,
                 system: systemPrompt,
                 messages: [
-                    { role: "user", content: prompt },
+                    { role: 'user', content: prompt },
                 ],
                 tools: [
                     {
-                        type: "web_search_20250305",
-                        name: "web_search",
+                        type: 'web_search_20250305',
+                        name: 'web_search',
                         max_uses: 10,
                     },
                 ],
             });
 
             // Combine all text blocks
-            content = message.content
-                .filter(block => block.type === 'text')
-                .map(block => block.text)
-                .join('\n');
+            content =
+                message.content
+                    .filter(block => block.type === 'text')
+                    .map(block => block.text)
+                    .join('\n');
         }
 
         let rawArticles = [];
@@ -513,23 +630,29 @@ Example format:
             rawArticles = extractJSON(content);
         } catch (e) {
             const logId = Date.now();
-            console.error(`[${logId}] Failed to parse AI JSON response:`, content.substring(0, 500) + "...");
+            console.error(
+                `[${logId}] Failed to parse AI JSON response:`,
+                content.substring(0, 500) + '...',
+            );
             // Write full content to file for debugging
             try {
-                require('fs').writeFileSync(`error_json_${logId}.log`, content);
+                writeFileSync(`error_json_${logId}.log`, content);
                 console.error(`Full error content written to error_json_${logId}.log`);
             } catch (fsErr) {
-                console.error("Failed to write error log file", fsErr);
+                console.error('Failed to write error log file.', fsErr);
             }
 
             return res.status(500).json({
-                error: "AI needs more detail before it can continue.",
+                error: 'AI needs more detail before it can continue.',
                 details: String(content || '').trim(),
-                logId
+                logId,
             });
         }
 
-        console.log(`AI found ${rawArticles.length} articles. Starting Stage 2: Verification & Categorization...`);
+        console.log(
+            `AI found ${rawArticles.length} articles. ` +
+            'Starting Stage 2: Verification & Categorization...',
+        );
 
         // Stage 2: Verification & Categorization
         const processArticle = async (article) => {
@@ -550,8 +673,8 @@ Example format:
 
             // Simple check: does content length > 300 chars?
             if (isReadable && content.length < 300) {
-                 console.log(`Skipping thin content (${content.length} chars): ${cleaned.url}`);
-                 return null;
+                console.log(`Skipping thin content (${content.length} chars): ${cleaned.url}`);
+                return null;
             }
 
             // 2. Categorize (and apply rejection rules from brief)
@@ -565,7 +688,10 @@ Example format:
                 }
             } else {
                 // If not readable, keep it but warn
-                console.log(`Content unreadable for ${cleaned.url}, skipping auto-categorization but keeping.`);
+                console.log(
+                    `Content unreadable for ${cleaned.url}, ` +
+                    'skipping auto-categorization but keeping.',
+                );
             }
 
             return cleaned;
@@ -606,26 +732,39 @@ router.post('/modify', async (req, res) => {
             return res.status(400).json({ error: 'Prompt and articles are required' });
         }
 
-        console.log(`Modifying ${articles.length} articles with instruction: "${prompt}" using model: ${model}`);
+        console.log(
+            `Modifying ${articles.length} articles with instruction: ` +
+            `"${prompt}" using model: ${model}`,
+        );
 
         const apiModel = getApiModelId(model);
         console.log(`Using model mapping: ${model} -> ${apiModel}`);
 
         const systemPrompt = `You are a professional editor for a newsletter. Modify the provided articles based on the user's instructions. Return the modified list as a JSON array. Each object must have: "title", "description", "url", "date". Maintain original order. Output only the JSON array — no markdown, no explanation.`;
 
-        const userMessage = `Instruction: ${prompt}\n\nArticles:\n${JSON.stringify(articles.map(a => ({ title: a.title, description: a.description, url: a.url, date: a.date || '' })), null, 2)}`;
+        const userMessage =
+            `Instruction: ${prompt}\n\nArticles:\n${JSON.stringify(articles.map(a => ({
+                title: a.title,
+                description: a.description,
+                url: a.url,
+                date: a.date || '',
+            })), null, 2)}`;
 
         let content = '';
 
         if (apiModel.toLowerCase().includes('gemini')) {
-             try {
+            try {
                 const geminiModel = genAI.getGenerativeModel({ model: apiModel });
-                const result = await geminiModel.generateContent(`${systemPrompt}\n\n${userMessage}`);
+                const result =
+                    await geminiModel.generateContent(`${systemPrompt}\n\n${userMessage}`);
                 const response = await result.response;
                 content = response.text();
             } catch (geminiError) {
-                console.error("Gemini API Error:", geminiError);
-                return res.status(500).json({ error: "Gemini Modify failed", details: geminiError.message });
+                console.error('Gemini API error:', geminiError);
+                return res.status(500).json({
+                    error: 'Gemini modify failed.',
+                    details: geminiError.message,
+                });
             }
         } else {
             const message = await anthropic.messages.create({
@@ -633,7 +772,7 @@ router.post('/modify', async (req, res) => {
                 max_tokens: 8000,
                 system: systemPrompt,
                 messages: [
-                    { role: "user", content: userMessage },
+                    { role: 'user', content: userMessage },
                 ],
             });
             content = message.content[0].text;
@@ -643,9 +782,9 @@ router.post('/modify', async (req, res) => {
         try {
             modifiedArticles = extractJSON(content);
         } catch (e) {
-            console.error("Failed to parse AI JSON response:", content);
+            console.error('Failed to parse AI JSON response:', content);
             return res.status(500).json({
-                error: "AI needs more detail before it can continue.",
+                error: 'AI needs more detail before it can continue.',
                 details: String(content || '').trim(),
             });
         }
@@ -672,21 +811,41 @@ router.post('/summarize', async (req, res) => {
             return res.status(400).json({ error: 'Prompt is required' });
         }
         if (!Array.isArray(articles) || articles.length === 0) {
-            return res.status(400).json({ error: 'Articles are required for category summary generation' });
+            return res
+                .status(400)
+                .json({ error: 'Articles are required for category summary generation' });
         }
 
-        const useGemini = (model && String(model).toLowerCase().includes('gemini')) || (!process.env.ANTHROPIC_API_KEY && (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY));
+        const useGemini =
+            (model && String(model).toLowerCase().includes('gemini')) ||
+            (!process.env.ANTHROPIC_API_KEY &&
+                (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY));
         const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
         const hasGemini = !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
 
         if (useGemini && !hasGemini) {
-            return res.status(503).json({ error: 'GEMINI_API_KEY not configured. Add it in .env or use Claude (ANTHROPIC_API_KEY).' });
+            return res
+                .status(503)
+                .json({
+                    error:
+                        'GEMINI_API_KEY not configured. ' +
+                        'Add it in .env or use Claude (ANTHROPIC_API_KEY).',
+                });
         }
         if (!useGemini && !hasAnthropic) {
-            return res.status(503).json({ error: 'ANTHROPIC_API_KEY not configured. Add it in .env or use Gemini (GEMINI_API_KEY).' });
+            return res
+                .status(503)
+                .json({
+                    error:
+                        'ANTHROPIC_API_KEY not configured. ' +
+                        'Add it in .env or use Gemini (GEMINI_API_KEY).',
+                });
         }
 
-        console.log(`Generating summaries for ${category} with rules: ${useRules} (${useGemini ? 'Gemini' : 'Claude'})`);
+        console.log(
+            `Generating summaries for ${category} with rules: ` +
+            `${useRules} (${useGemini ? 'Gemini' : 'Claude'})`
+        );
 
         let systemPrompt = `You are a professional newsletter editor. Create a newsletter-ready summary for the provided category articles only.
 
@@ -702,11 +861,9 @@ If some links could not be accessed, briefly note that in one short line.`;
             systemPrompt += `\n\nHere are the specific rules you MUST follow:\n${summaryRules}`;
         } else if (useRules) {
             try {
-                const fs = require('fs');
-                const path = require('path');
-                const rulesPath = path.join(__dirname, '../newsletter_summary_rules.md');
-                if (fs.existsSync(rulesPath)) {
-                    const rules = fs.readFileSync(rulesPath, 'utf8');
+                const rulesPath = join(import.meta.dirname, '../newsletter_summary_rules.md');
+                if (existsSync(rulesPath)) {
+                    const rules = readFileSync(rulesPath, 'utf8');
                     systemPrompt += `\n\nHere are the specific rules you MUST follow:\n${rules}`;
                 }
             } catch (err) {
@@ -753,7 +910,8 @@ If some links could not be accessed, briefly note that in one short line.`;
 
         let content = '';
         if (useGemini) {
-            const geminiModel = genAI.getGenerativeModel({ model: getApiModelId(model || 'gemini-flash-3-0') });
+            const geminiModel =
+                genAI.getGenerativeModel({ model: getApiModelId(model || 'gemini-flash-3-0') });
             const fullPrompt = `${systemPrompt}\n\nUser content to summarize:\n\n${userMessage}`;
             const result = await geminiModel.generateContent(fullPrompt);
             content = result.response.text();
@@ -771,7 +929,7 @@ If some links could not be accessed, briefly note that in one short line.`;
 
         res.json({
             success: true,
-            resultText: content
+            resultText: content,
         });
 
     } catch (error) {
@@ -792,7 +950,9 @@ router.post('/generate-subjects', async (req, res) => {
 
         const hasGemini = !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
         if (!hasGemini) {
-            return res.status(503).json({ error: 'GEMINI_API_KEY not configured for subject generation.' });
+            return res
+                .status(503)
+                .json({ error: 'GEMINI_API_KEY not configured for subject generation.' });
         }
 
         const normalized = {};
@@ -826,20 +986,29 @@ Return only valid JSON with keys MED, THC, CBD, INV.`;
         ].join('\n');
 
         const requestedModel = String(model || '').toLowerCase();
-        const geminiModelId = requestedModel.includes('gemini')
-            ? getApiModelId(model || 'gemini-flash-3-0')
-            : getApiModelId('gemini-flash-3-0');
+        const geminiModelId =
+            requestedModel.includes('gemini')
+                ? getApiModelId(model || 'gemini-flash-3-0')
+                : getApiModelId('gemini-flash-3-0');
         const geminiModel = genAI.getGenerativeModel({ model: geminiModelId });
         const fullPrompt = `${systemPrompt}\n\n${userMessage}`;
         const result = await geminiModel.generateContent(fullPrompt);
         const content = result.response.text().trim();
-        const cleaned = content.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
+        const cleaned =
+            content
+                .replace(/^```json\s*/i, '')
+                .replace(/^```\s*/i, '')
+                .replace(/\s*```$/i, '')
+                .trim();
 
         let subjects;
         try {
             subjects = JSON.parse(cleaned);
         } catch (err) {
-            return res.status(500).json({ error: 'Subject generator returned invalid JSON', details: cleaned });
+            return res.status(500).json({
+                error: 'Subject generator returned invalid JSON',
+                details: cleaned,
+            });
         }
 
         res.json({
@@ -865,12 +1034,12 @@ router.get('/error-log/:logId', async (req, res) => {
         }
 
         const filename = `error_json_${logId}.log`;
-        const filepath = path.join(process.cwd(), filename);
-        if (!fs.existsSync(filepath)) {
+        const filepath = join(process.cwd(), filename);
+        if (!existsSync(filepath)) {
             return res.status(404).json({ error: 'Log not found' });
         }
 
-        const content = fs.readFileSync(filepath, 'utf8');
+        const content = readFileSync(filepath, 'utf8');
         return res.json({ success: true, logId, content });
     } catch (error) {
         console.error('Error reading AI parse log:', error);
@@ -878,4 +1047,4 @@ router.get('/error-log/:logId', async (req, res) => {
     }
 });
 
-module.exports = router;
+export default router;

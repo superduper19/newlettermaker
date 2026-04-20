@@ -12,10 +12,12 @@
  * by loading it and then "Save current" with a new name.
  */
 
-require('dotenv').config();
-const { createClient } = require('@supabase/supabase-js');
-const fs = require('fs');
-const path = require('path');
+import { createClient } from '@supabase/supabase-js';
+import { config } from 'dotenv';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+config();
 
 const TABLE = process.env.SUPABASE_STATE_TABLE || 'newsletter_state';
 
@@ -31,7 +33,11 @@ async function main() {
     const sessionName = process.argv[2] && process.argv[2].trim() ? process.argv[2].trim() : null;
 
     const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
+    const key =
+        process.env.SUPABASE_SECRET_KEY ||
+        process.env.SUPABASE_SERVICE_ROLE_KEY ||
+        process.env.SUPABASE_ANON_KEY ||
+        process.env.SUPABASE_PUBLISHABLE_KEY;
     if (!url || !key) {
         console.error('Missing SUPABASE_URL and SUPABASE_SECRET_KEY (or other key) in .env');
         process.exit(1);
@@ -76,11 +82,13 @@ async function main() {
         sessions,
     };
 
-    const dir = path.join(__dirname, '..', 'backups');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const dir = join(import.meta.dirname, '..', 'backups');
+    if (!existsSync(dir)) {
+        mkdirSync(dir, { recursive: true });
+    }
     const filename = `state-backup-${timestamp()}.json`;
-    const filepath = path.join(dir, filename);
-    fs.writeFileSync(filepath, JSON.stringify(backup, null, 2), 'utf8');
+    const filepath = join(dir, filename);
+    writeFileSync(filepath, JSON.stringify(backup, null, 2), 'utf8');
     console.log('Backup written:', filepath);
     console.log('  workspace:', (workspace.articles || []).length, 'articles');
     console.log('  sessions:', Object.keys(sessions).join(', ') || '(none)');
@@ -114,7 +122,11 @@ async function main() {
             console.error('Failed to save session "' + sessionName + '" to server:', eu.message);
             process.exit(1);
         }
-        console.log('Saved current workspace as session "' + sessionName + '" on server. Refresh from server in the app to see it.');
+        console.log(
+            'Saved current workspace as session "' +
+            sessionName +
+            '" on server. Refresh from server in the app to see it.',
+        );
     }
 }
 

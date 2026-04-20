@@ -1,4 +1,4 @@
-async function testMockSearch() {
+(async function testMockSearch() {
     console.log('Testing Search with "TEST_MOCK_DATA"...');
     try {
         const response = await fetch('http://localhost:5020/api/articles/search', {
@@ -24,6 +24,4 @@ async function testMockSearch() {
     } catch (error) {
         console.error('❌ Network Error:', error.message);
     }
-}
-
-testMockSearch();
+})();

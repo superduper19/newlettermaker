@@ -6,14 +6,20 @@
  * because it merges server sessions + localStorage (local-only sessions).
  */
 
-require('dotenv').config();
-const { createClient } = require('@supabase/supabase-js');
+import { createClient } from '@supabase/supabase-js';
+import { config } from 'dotenv';
+
+config();
 
 const TABLE = process.env.SUPABASE_STATE_TABLE || 'newsletter_state';
 
 async function main() {
     const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
+    const key =
+        process.env.SUPABASE_SECRET_KEY ||
+        process.env.SUPABASE_SERVICE_ROLE_KEY ||
+        process.env.SUPABASE_ANON_KEY ||
+        process.env.SUPABASE_PUBLISHABLE_KEY;
     if (!url || !key) {
         console.error('Missing SUPABASE_URL and key in .env');
         process.exit(1);

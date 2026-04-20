@@ -1,4 +1,5 @@
-const http = require('http');
+import { Buffer } from 'node:buffer';
+import { request } from 'node:http';
 
 // Simple HTTP Post function
 function post(urlStr, data) {
@@ -12,10 +13,10 @@ function post(urlStr, data) {
             headers: {
                 'Content-Type': 'application/json',
                 'Content-Length': Buffer.byteLength(JSON.stringify(data)),
-            }
+            },
         };
 
-        const req = http.request(options, (res) => {
+        const req = request(options, (res) => {
             let body = '';
             res.setEncoding('utf8');
             res.on('data', (chunk) => body += chunk);
@@ -42,8 +43,8 @@ function post(urlStr, data) {
     });
 }
 
-async function test() {
-    console.log("Starting API Tests...");
+(async function test() {
+    console.log('Starting API Tests...');
 
     const models = [
         'claude-opus-4-6',
@@ -57,20 +58,18 @@ async function test() {
         console.log(`\nTesting Model: ${model}`);
         try {
             const res = await post('http://localhost:5020/api/articles/search', {
-                prompt: "Cannabis news",
-                newsletterName: "Test",
+                prompt: 'Cannabis news',
+                newsletterName: 'Test',
                 model: model,
-                startDate: "2024-01-01",
-                endDate: "2024-12-31",
+                startDate: '2024-01-01',
+                endDate: '2024-12-31',
             });
             console.log(`SUCCESS [${model}]: Found ${res.count} articles`);
         } catch (e) {
             console.error(`FAILED [${model}]:`, e.message);
             if (e.details) {
-                console.error("Error Details:", JSON.stringify(e.details, null, 2));
+                console.error('Error Details:', JSON.stringify(e.details, null, 2));
             }
         }
     }
-}
-
-test();
+})();

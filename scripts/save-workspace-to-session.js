@@ -7,16 +7,25 @@
  * Default name if omitted: "Week 3 B"
  */
 
-require('dotenv').config();
-const { createClient } = require('@supabase/supabase-js');
+import { createClient } from '@supabase/supabase-js';
+import { config } from 'dotenv';
+
+config();
 
 const TABLE = process.env.SUPABASE_STATE_TABLE || 'newsletter_state';
 
 async function main() {
-    const sessionName = process.argv[2] && process.argv[2].trim() ? process.argv[2].trim() : 'Week 3 B';
+    const sessionName =
+        process.argv[2] && process.argv[2].trim()
+            ? process.argv[2].trim()
+            : 'Week 3 B';
 
     const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
+    const key =
+        process.env.SUPABASE_SECRET_KEY ||
+        process.env.SUPABASE_SERVICE_ROLE_KEY ||
+        process.env.SUPABASE_ANON_KEY ||
+        process.env.SUPABASE_PUBLISHABLE_KEY;
     if (!url || !key) {
         console.error('Missing SUPABASE_URL and SUPABASE_SECRET_KEY (or other key) in .env');
         process.exit(1);
@@ -35,7 +44,10 @@ async function main() {
         process.exit(1);
     }
     if (!workspaceRow || !workspaceRow.value) {
-        console.error('No workspace in database. Load articles in the app first (or upload a sheet), then run this script.');
+        console.error(
+            'No workspace in database. ' +
+            'Load articles in the app first (or upload a sheet), then run this script.',
+        );
         process.exit(1);
     }
 
@@ -46,11 +58,12 @@ async function main() {
         process.exit(1);
     }
 
-    const { data: sessionsRow, error: es } = await supabase
-        .from(TABLE)
-        .select('value')
-        .eq('key', 'sessions')
-        .maybeSingle();
+    const { data: sessionsRow, error: es } =
+        await supabase
+            .from(TABLE)
+            .select('value')
+            .eq('key', 'sessions')
+            .maybeSingle();
 
     if (es) {
         console.error('Failed to read sessions:', es.message);
@@ -93,7 +106,9 @@ async function main() {
     }
 
     console.log(`Saved workspace as session "${sessionName}" (${articles.length} articles).`);
-    console.log('In the app, click "Refresh from server" or reload the page to see it in the dropdown.');
+    console.log(
+        'In the app, click "Refresh from server" or reload the page to see it in the dropdown.',
+    );
 }
 
 main();

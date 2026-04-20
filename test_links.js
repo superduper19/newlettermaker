@@ -1,7 +1,7 @@
 // Remove require since Node 22 has global fetch
-// const fetch = require('node-fetch');
+// import fetch from 'node-fetch';
 
-async function testLinks() {
+(async function testLinks() {
     console.log('Testing Article Search and Verification...');
     const url = 'http://localhost:5020/api/articles/search';
     const body = {
@@ -46,6 +46,4 @@ async function testLinks() {
     } catch (error) {
         console.error('Test failed:', error);
     }
-}
-
-testLinks();
+})();

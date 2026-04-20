@@ -15,10 +15,11 @@
  *     → Saves session as "Week 3d" and sets workspace = that session so the app shows it on next refresh.
  */
 
-require('dotenv').config();
-const { createClient } = require('@supabase/supabase-js');
-const fs = require('fs');
-const path = require('path');
+import { createClient } from '@supabase/supabase-js';
+import { config } from 'dotenv';
+import { existsSync, readFileSync } from 'node:fs';
+
+config();
 
 const TABLE = process.env.SUPABASE_STATE_TABLE || 'newsletter_state';
 
@@ -31,14 +32,19 @@ async function main() {
     const fromSession = rest[1]; // session name in backup (e.g. "Week 3c")
     const toSession = rest[2];  // session name to save as (e.g. "Week 3d")
 
-    if (!filepath || !fs.existsSync(filepath)) {
-        console.error('Usage: node scripts/restore-session-from-backup.js <backup-file> [fromSession] [toSession] [--as-workspace]');
-        console.error('   or: node scripts/restore-session-from-backup.js <backup-file> --workspace');
+    if (!filepath || !existsSync(filepath)) {
+        console.error(
+            'Usage: node scripts/restore-session-from-backup.js ' +
+            '<backup-file> [fromSession] [toSession] [--as-workspace]',
+        );
+        console.error(
+            '   or: node scripts/restore-session-from-backup.js <backup-file> --workspace',
+        );
         console.error('Backup file not found:', filepath);
         process.exit(1);
     }
 
-    const raw = fs.readFileSync(filepath, 'utf8');
+    const raw = readFileSync(filepath, 'utf8');
     let backup;
     try {
         backup = JSON.parse(raw);
@@ -51,7 +57,11 @@ async function main() {
     const workspace = backup.workspace || {};
 
     const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
+    const key =
+        process.env.SUPABASE_SECRET_KEY ||
+        process.env.SUPABASE_SERVICE_ROLE_KEY ||
+        process.env.SUPABASE_ANON_KEY ||
+        process.env.SUPABASE_PUBLISHABLE_KEY;
     if (!url || !key) {
         console.error('Missing SUPABASE_URL and key in .env');
         process.exit(1);
@@ -70,7 +80,11 @@ async function main() {
             console.error('Failed to restore workspace:', error.message);
             process.exit(1);
         }
-        console.log('Restored workspace from backup (' + (workspace.articles || []).length + ' articles). Refresh the app.');
+        console.log(
+            'Restored workspace from backup (' +
+            (workspace.articles || []).length +
+            ' articles). Refresh the app.',
+        );
         return;
     }
 
@@ -96,9 +110,10 @@ async function main() {
         console.error('Failed to read sessions:', es.message);
         process.exit(1);
     }
-    const currentSessions = sessionsRow && sessionsRow.value && typeof sessionsRow.value === 'object'
-        ? { ...sessionsRow.value }
-        : {};
+    const currentSessions =
+        sessionsRow && sessionsRow.value && typeof sessionsRow.value === 'object'
+            ? { ...sessionsRow.value }
+            : {};
 
     currentSessions[toSession] = {
         ...source,
@@ -116,7 +131,15 @@ async function main() {
         console.error('Failed to save session:', eu.message);
         process.exit(1);
     }
-    console.log('Restored session "' + fromSession + '" from backup as "' + toSession + '" (' + source.articles.length + ' articles).');
+    console.log(
+        'Restored session "' +
+        fromSession +
+        '" from backup as "' +
+        toSession +
+        '" (' +
+        source.articles.length +
+        ' articles).',
+    );
 
     if (asWorkspace) {
         const { error: ew } = await supabase
@@ -140,7 +163,11 @@ async function main() {
         }
         console.log('Set workspace to "' + toSession + '". Refresh the app to see it.');
     } else {
-        console.log('In the app, click "Refresh from server" and select "' + toSession + '" from the dropdown to load it.');
+        console.log(
+            'In the app, click "Refresh from server" and select "' +
+            toSession +
+            '" from the dropdown to load it.',
+        );
     }
 }
 
