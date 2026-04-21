@@ -24,32 +24,54 @@ const WORD_EXCLUSIONS = [
     'to',
     'v',
     'v.',
+    'versus',
     'via',
     'vs',
     'vs.',
     'with',
-]
+];
 
-function validateHeadlines(headlines) {
-    if (headlines.some(s => validateHeadline(s) === BAD_FORMAT)) {
-        return [
-            '#d32f2f',
-            'Remove space padding or double-spacing.',
-            '&cross;',
-        ]
+function collectHeadlineViolations(headlines) {
+    let color;
+    let symbol;
+    let message;
+    const violations = [];
+    for (const headline of headlines) {
+        if (validateHeadline(headline) === BAD_FORMAT) {
+            if (color === undefined) {
+                color = '#d32f2f';
+                symbol = '&cross;';
+                message = 'Remove space padding or double-spacing:';
+            }
+            violations.push(headline);
+            continue;
+        }
+        if (!violations.length && validateHeadline(headline) === WARN_FORMAT) {
+            if (color === undefined) {
+                color = '#f57c00';
+                symbol = '&cross;';
+                message = 'Headlines should be in title case:';
+            }
+            violations.push(headline);
+        }
     }
-    if (headlines.some(s => validateHeadline(s) === WARN_FORMAT)) {
-        return [
-            '#f57c00',
-            'Headlines should be in title case.',
-            '&#9888;',
-        ]
+    if (color === undefined) {
+        return {
+            color: '#666',
+            symbol: '&check;',
+            message:
+                'Uses the email template, then fills in summary, articles and an inspirational ' +
+                'image.',
+        };
     }
-    return [
-        '#666',
-        'Uses the email template, then fills in summary, articles and an inspirational image.',
-        '&check;',
-    ]
+    for (const violation of violations) {
+        message += `<br>&bull; ${violation}`;
+    }
+    return {
+        color: color,
+        symbol: symbol,
+        message: message,
+    };
 }
 
 function validateHeadline(headline) {
