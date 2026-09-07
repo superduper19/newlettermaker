@@ -3652,7 +3652,23 @@ window.closeManualContentModal = () => {
 // picked article) and rebuilds it from the current picks before use, so a
 // stale box can't get sent to the AI. Any overlap is left untouched so manual
 // edits to the current picks' text aren't clobbered.
+/**
+ * The four category blocks must always exist. A saved session whose
+ * newsletterContent object is present but missing a category (older sessions, or
+ * ones saved before a category was ever opened) used to leave the key undefined,
+ * and every consumer then bailed out — Summarize All reported the category as
+ * "skipped" instantly, without making a request.
+ */
+function ensureCategoryContentObjects() {
+    ['MED', 'THC', 'CBD', 'INV'].forEach((cat) => {
+        if (!newsletterContent[cat] || typeof newsletterContent[cat] !== 'object') {
+            newsletterContent[cat] = { intro: '', outro: '' };
+        }
+    });
+}
+
 function getArticlesTextForCategory(category) {
+    ensureCategoryContentObjects();
     const content = newsletterContent[category];
     if (!content) return '';
     const synced = mergeArticlesOnlyBlock(category, content.summaryArticlesText) || buildArticlesOnlyBlock(category) || '';
@@ -6493,6 +6509,9 @@ window.loadSession = () => {
         stateIconsPublicBase: nc.stateIconsPublicBase || DEFAULT_STATE_ICONS_PUBLIC_BASE,
         inspirationalPublicBase: nc.inspirationalPublicBase || DEFAULT_INSPIRATIONAL_PUBLIC_BASE,
     };
+    // The category defaults above only apply when newsletterContent is missing
+    // wholesale, so backfill any individual category the saved session lacks.
+    ensureCategoryContentObjects();
     inferPublicImageSettingsFromArticles();
     syncPublicImageSettingsUi();
 
