@@ -473,9 +473,18 @@ input[type="text"], input[type="date"], input[type="file"], textarea, select {
  * wider than the Article column alone, so three lines hold several times the text.
  * Column 2 is Article, line 11 is where col-actions begins.
  */
-.article-summary {
+/*
+ * The summary cell spans from the Article column across to the edge of Notes,
+ * stopping short of the Archive/Remove buttons — far wider than the Article column
+ * alone. Column 2 is Article; line 11 is where col-actions begins.
+ */
+.article-summary-cell {
   grid-column: 2 / 11;
   grid-row: 2;
+  @apply min-w-0;
+}
+
+.article-summary {
   @apply m-0 text-[0.85rem] text-[#666] leading-[1.45] min-w-0;
   display: -webkit-box;
   -webkit-line-clamp: 3;
@@ -673,6 +682,14 @@ input[type="text"], input[type="date"], input[type="file"], textarea, select {
 
 .tab-btn.active {
   @apply bg-linear-to-b from-[rgba(255,255,255,0.98)] to-[rgba(255,250,243,0.95)] text-[#1f3e37] border-t-2 border-t-(--primary) shadow-[0_-8px_18px_rgba(95,77,52,0.06)];
+}
+
+.bulk-tab-btn {
+  @apply py-2 px-3.5 bg-[rgba(255,255,255,0.6)] border border-solid border-[rgba(132,114,83,0.14)] border-b-0 cursor-pointer font-semibold rounded-t-xl text-[0.85rem] text-[#5a6158] [&:not(.active)]:hover:bg-[rgba(47,110,99,0.06)];
+}
+
+.bulk-tab-btn.active {
+  @apply bg-white text-[#1f3e37] border-t-2 border-t-(--primary);
 }
 
 /* Stat Items */

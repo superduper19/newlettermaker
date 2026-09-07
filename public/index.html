@@ -31,8 +31,15 @@
         <div id="article-stats" class="article-stats hidden"></div>
         <div class="flex flex-col items-end relative">
             <div class="flex items-center gap-2">
+              <label for="article-search-engine" class="text-xs font-semibold text-[#16423c]">Search</label>
+              <select id="article-search-engine" class="form-control py-1 px-2 text-xs rounded border border-[#84725333] shadow-sm bg-white max-w-[8.5rem]" title="Web search used in Phase 1 (article discovery). AI Model controls JSON extraction and summaries." onchange="updateArticleSearchEngine()">
+                <option value="auto">Auto</option>
+                <option value="youcom" selected>You.com</option>
+                <option value="claude">Claude web</option>
+                <option value="gemini">Gemini Google</option>
+              </select>
               <label for="ai-model" class="text-xs font-semibold text-[#16423c]">AI Model</label>
-              <select id="ai-model" class="form-control py-1 px-2 text-xs rounded border border-[#84725333] shadow-sm bg-white" title="Choose the LLM to use across the entire app">
+              <select id="ai-model" class="form-control py-1 px-2 text-xs rounded border border-[#84725333] shadow-sm bg-white" title="LLM for JSON extraction, summaries, and modifications (Phase 2+)">
                 <option value="claude-opus-5" selected>Claude Opus 5 (Best)</option>
                 <option value="claude-opus-5-extended">Claude Opus 5 Extended</option>
                 <option value="claude-opus-4-8">Claude Opus 4.8</option>
@@ -471,17 +478,34 @@
           <div id="editor-bulk-workflow" class="mb-6 p-4 border border-[#c5cae9] rounded-lg bg-[#f3f4fb]">
             <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
               <div>
-                <label class="font-bold block">All four newsletters (Grammarly)</label>
-                <p class="text-[0.8rem] text-[#555] mt-0.5">Copy once with MED / THC / CBD / INV labels. Edit in Grammarly, paste back here, then apply to Selected Content below.</p>
+                <label class="font-bold block">All four newsletters</label>
+                <p id="bulk-workflow-help" class="text-[0.8rem] text-[#555] mt-0.5">Copy once with MED / THC / CBD / INV labels. Edit in Grammarly, paste back here, then apply to Selected Content below.</p>
               </div>
               <div class="flex flex-wrap gap-2 items-center">
                 <span id="bulk-newsletter-status" class="text-[0.75rem] text-[#666]"></span>
-                <button type="button" class="btn btn-outline btn-sm" onclick="loadBulkNewsletterText()">Load from Selected</button>
-                <button type="button" class="btn btn-primary btn-sm" onclick="copyAllNewsletterText()">Copy all 4</button>
-                <button type="button" class="btn btn-secondary btn-sm" onclick="applyBulkNewsletterPaste()">Apply to Selected</button>
+                <button type="button" id="bulk-btn-load" class="btn btn-outline btn-sm" onclick="loadBulkNewsletterText()">Load from Selected</button>
+                <button type="button" id="bulk-btn-copy" class="btn btn-primary btn-sm" onclick="copyAllNewsletterText()">Copy all 4</button>
+                <button type="button" id="bulk-btn-apply" class="btn btn-secondary btn-sm" onclick="applyBulkNewsletterPaste()">Apply to Selected</button>
+                <button type="button" id="bulk-btn-send" class="btn btn-primary btn-sm hidden" onclick="requestBulkNewsletterChanges()">
+                  <span id="bulk-send-btn-text">Send to AI</span>
+                </button>
               </div>
             </div>
-            <textarea id="editor-bulk-paste" rows="14" class="form-control font-[monospace] text-[0.88rem] bg-white p-2 w-full border border-[#9fa8da]" placeholder="--- MED ---&#10;(summary text)&#10;&#10;--- THC ---&#10;...&#10;&#10;--- CBD ---&#10;...&#10;&#10;--- INV ---&#10;..."></textarea>
+            <div class="flex flex-wrap gap-1 border-b border-[#c5cae9] mb-3">
+              <button type="button" class="bulk-tab-btn active" data-bulk-tab="original" onclick="switchBulkWorkflowTab('original')">Original</button>
+              <button type="button" class="bulk-tab-btn" data-bulk-tab="changes" onclick="switchBulkWorkflowTab('changes')">Changes</button>
+              <button type="button" class="bulk-tab-btn" data-bulk-tab="updated" onclick="switchBulkWorkflowTab('updated')">Updated</button>
+            </div>
+            <div id="bulk-pane-original">
+              <textarea id="editor-bulk-paste" rows="14" class="form-control font-[monospace] text-[0.88rem] bg-white p-2 w-full border border-[#9fa8da]" placeholder="--- MED ---&#10;(summary text)&#10;&#10;--- THC ---&#10;...&#10;&#10;--- CBD ---&#10;...&#10;&#10;--- INV ---&#10;..." oninput="persistBulkWorkflowFields()"></textarea>
+            </div>
+            <div id="bulk-pane-changes" class="hidden">
+              <textarea id="editor-bulk-change-request" rows="6" class="form-control text-[0.9rem] bg-white p-2 w-full border border-[#9fa8da]" placeholder="Describe the edits, e.g. Shorten THC, keep MED as-is, add a warmer closer on INV..." oninput="persistBulkWorkflowFields()"></textarea>
+              <p class="text-[0.75rem] text-[#555] mt-2 mb-0">Uses the Original tab as the source and the AI Model in the nav bar. The rewritten copy appears on Updated.</p>
+            </div>
+            <div id="bulk-pane-updated" class="hidden">
+              <textarea id="editor-bulk-updated" rows="14" class="form-control font-[monospace] text-[0.88rem] bg-white p-2 w-full border border-[#9fa8da]" placeholder="AI-revised MED / THC / CBD / INV copy will appear here." oninput="persistBulkWorkflowFields()"></textarea>
+            </div>
           </div>
 
           <div id="editor-content">
@@ -696,6 +720,6 @@
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="js/admonitions.js"></script>
-<script src="js/app.js?v=20260601d"></script>
+<script src="js/app.js?v=20260831selected2"></script>
 </body>
 </html>

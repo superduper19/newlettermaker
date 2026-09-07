@@ -9,6 +9,80 @@ This file serves as a persistent record of changes made to this project and cruc
 3. **EXPLICIT ERRORS OVER FALLBACKS**: If an LLM encounters a billing issue, quota limit, or missing capability, the system MUST explicitly report the exact error to the user. Do NOT automatically silently switch to another LLM to hide the error. 
 4. **STRICT MODEL NAMES**: Do not alter model names based on assumptions of what "should" exist. Ensure the exact model identifiers expected by the APIs (e.g., `gemini-3.1-pro-preview`) are used, even if a stable version "should" be out.
 
+## [2026-08-31] - Selected Content No Longer Ships a Stale Draft
+
+### Fixed
+- **"It says a link is missing but never asked me"**: Summarize All only ever wrote to Created Result, while "Copy all 4" exports Selected Content (`getNewsletterTextForCategory` prefers Selected). CBD and INV still held an older draft saying the link could not be accessed, so a clean regeneration was invisible in the copy and no modal appeared because nothing had actually failed. A regeneration now carries into Selected Content when Selected was never hand-edited, empty, or still says a link failed; genuine Grammarly edits are kept and flagged with a "Use newest" button. The bulk Original box is rebuilt at the same time, and Load/Copy refuse to export a draft that still claims a link could not be read.
+
+## [2026-08-31] - Summaries Must Cover All Three Articles
+
+### Fixed
+- **“Couldn’t load” in the newsletter copy**: Rule 5 and the base prompt told the model to say that when a page failed. Extra leftover URLs in the articles box made it treat PsyPost/SFGate as missing. Those leftover links are stripped to the three picks, the model is told to summarize every fetched body, and a “couldn’t load” draft is rejected instead of saved.
+
+## [2026-08-31] - Summarize Uses the Three Links in the Articles Box
+
+### Fixed
+- **Your Text-page box is the source of articles 1–3**: Older summarize calls sent leftover URLs in the box while only fetching pick-order rows, so the model said PsyPost wouldn’t load. The server now fetches the first three links from that box (or asks you to paste) and does not send the leftover list to the model.
+
+## [2026-08-31] - Incomplete Draft Opens the Paste Modal
+
+### Fixed
+- **“Couldn’t load” drafts no longer count as done**: If Summarize All writes a paragraph that says a link wouldn’t load, the paste modal opens for every pick that still has no matching article text, with clickable URLs.
+
+## [2026-08-31] - Ask for Missing Articles Before Summarize All
+
+### Fixed
+- **Summarize All wrote “link wouldn’t load” instead of asking**: Extra leftover URLs in the articles box were sent to the model (PsyPost as #3 while only two stories were fetched). Summarize All now checks the three picks first, asks for any body it cannot fetch, and only then generates. Modal URLs are clickable and open in a new tab.
+
+## [2026-08-31] - Manual Paste Must Match the Article
+
+### Fixed
+- **Wrong article in the paste box**: Pasted text was saved by list position, so the NORML burning-mouth piece was stored on the SFGate INV row and shown as “Text Provided.” Summarize now checks paste (and scraped pages) against the headline. Mismatched text is removed from the wrong URL, kept on the matching article, and the modal asks again with an empty box.
+
+## [2026-08-31] - Summarize Asks for the Real Missing Articles
+
+### Fixed
+- **Wrong third story / “link wouldn’t load”**: Summarize was sending leftover URLs in the articles box (so the model tried PsyPost) while only fetching pick-order ranks (CBD `1,3,4` had no rank 4). The box and the fetch now use the same 3 articles: pick-order matches first, then fill from remaining eligible. Pasted text is kept and keyed by URL. If a scrape still fails, or pasted text belongs to a different headline, the modal asks again with existing paste prefilled.
+
+## [2026-08-31] - Created Result above Templates
+
+### Changed
+- **Created Result placement**: All four Created Result boxes (MED / THC / CBD / INV) now sit directly under the all-four newsletters box and above the per-category template, so you can see generated copy without scrolling past Summary Rules.
+
+## [2026-08-31] - Text Page Bulk Changes Tabs
+
+### Added
+- **Original / Changes / Updated tabs** on the Text page “All four newsletters” box. Changes sends the Original MED/THC/CBD/INV copy plus a change request to the selected AI Model; the rewritten draft lands on Updated. **Apply to Selected** and **Copy all 4** use Updated when that tab is active.
+
+## [2026-08-31] - Duplicate Detection by Title
+
+### Added
+- **Title-based dedup**: Same headline on different URLs (syndicated/partner sites) is treated as one article. Dedup runs after search, after verify (when canonical titles are fixed), when adding more articles, and on Excel import.
+
+## [2026-08-31] - You.com Domain Filters (Boost / Exclude / Include)
+
+### Changed
+- **Domain filters**: `YOUCOM_BOOST_DOMAINS` = preference only (rank higher, do not block others). Default hard block is Wikipedia only; YouTube and other sites are not blocked unless you add them to `YOUCOM_EXCLUDE_DOMAINS`.
+
+## [2026-08-31] - Canonical Headlines on Verify
+
+### Fixed
+- **Title paraphrasing**: Phase 2 search extraction sometimes rewrote headlines (e.g. Politico's real title vs an AI summary). Verify now pulls the canonical title from the page (`og:title`, JSON-LD `headline`, `<title>`) and replaces the stored title, same as we already do for publish dates.
+
+## [2026-08-31] - Auto-Drop Rejected Articles on Verify
+
+### Changed
+- **Flag = drop, not review**: Articles flagged by editorial review during `/api/articles/verify` are now removed automatically instead of kept with a `FLAG` status in the workspace.
+- **Hard reject rules on verify**: Drops articles older than 7 days (configurable via `ARTICLE_MAX_AGE_DAYS`), plus obvious non-news URLs (Wikipedia, `/video/`, YouTube, Vimeo).
+- Verify response includes `rejectedCount` and `rejected` (url/title/reason); UI status shows how many were removed.
+
+## [2026-08-31] - You.com Web Search for Article Discovery
+
+### Added
+- **You.com search integration**: Phase 1 article discovery can use the You.com Web Search API (`lib/youcom-search.js`) when `YDC_API_KEY` is set. Returns structured web + news results with highlights, boosted industry domains, and `freshness=week` by default.
+- **Search engine dropdown** in the nav bar (next to AI Model): **Auto**, **You.com**, **Claude web**, **Gemini Google**. Search controls Phase 1 only; AI Model still controls JSON extraction, summaries, and modifications.
+- Env tuning: `YOUCOM_FRESHNESS`, `YOUCOM_SEARCH_COUNT`, `YOUCOM_COUNTRY`, `YOUCOM_BOOST_DOMAINS`.
+
 ## [2026-08-17] - Archive.is Source Labels in Final Email
 
 ### Fixed

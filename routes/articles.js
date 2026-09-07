@@ -8,6 +8,9 @@ const OpenAI = require('openai');
 const fs = require('fs');
 const path = require('path');
 const prioritySources = require('../lib/priority-sources');
+const { searchYouCom, getYouComApiKey } = require('../lib/youcom-search');
+const { shouldRejectArticleUrl } = require('../lib/article-source-domains');
+const { filterDuplicateArticles, dedupeArticleList } = require('../lib/article-dedup');
 
 // Configure Multer for memory storage
 const upload = multer({ storage: multer.memoryStorage() });
@@ -80,15 +83,149 @@ const cleanArticleData = (row, index) => {
     };
 };
 
+// Turn a parsed Date into the MM/DD/YY format the rest of the app expects.
+const formatDateMMDDYY = (d) => {
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yy = String(d.getFullYear()).slice(-2);
+    return `${mm}/${dd}/${yy}`;
+};
+
+// A candidate date string is only trustworthy if it parses and falls in a sane
+// range — this rejects garbage matches (e.g. a copyright year) without us having
+// to hand-parse every site's date format.
+const parseCandidateDate = (raw) => {
+    if (!raw) return null;
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return null;
+    const year = d.getFullYear();
+    const now = new Date();
+    const twoDaysFromNow = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
+    if (year < 2000 || d > twoDaysFromNow) return null;
+    return d;
+};
+
+// Look for a real publish date in the page's own metadata (meta tags, JSON-LD,
+// <time> elements) or, failing that, in the URL path itself (many news sites embed
+// /2026/08/07/ in the slug). Returns '' — never a guess — if nothing checks out.
+const extractPublishDate = (html, url) => {
+    const metaPatterns = [
+        /<meta[^>]+(?:property|name)=["'](?:article:published_time|og:article:published_time|publish-date|publishdate|date|sailthru\.date|parsely-pub-date|dc\.date|dc\.date\.issued)["'][^>]+content=["']([^"']+)["']/i,
+        /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:article:published_time|og:article:published_time)["']/i,
+        /"datePublished"\s*:\s*"([^"]+)"/i,
+        /<time[^>]+datetime=["']([^"']+)["']/i,
+        /itemprop=["']datePublished["'][^>]+(?:content|datetime)=["']([^"']+)["']/i,
+    ];
+
+    if (html) {
+        for (const pattern of metaPatterns) {
+            const match = html.match(pattern);
+            if (match) {
+                // parseCandidateDate vets the match (rejects copyright years and other
+                // garbage), but formatting the Date it returns would render in the
+                // server's timezone — a UTC-midnight stamp then reads as the previous
+                // day. Format the raw string instead, honouring the offset the
+                // publisher stamped, so we store the date their page shows.
+                const parsed = parseCandidateDate(match[1]);
+                if (parsed) return prioritySources.formatDateMMDDYY(match[1]) || formatDateMMDDYY(parsed);
+            }
+        }
+    }
+
+    if (url) {
+        const urlMatch = url.match(/\/(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})(?:[\/-]|$)/);
+        if (urlMatch) {
+            const parsed = parseCandidateDate(`${urlMatch[1]}-${urlMatch[2]}-${urlMatch[3]}`);
+            if (parsed) return formatDateMMDDYY(parsed);
+        }
+    }
+
+    return '';
+};
+
+function decodeHtmlEntities(str) {
+    return String(str || '')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&apos;/g, "'")
+        .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+        .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+        .trim();
+}
+
+function normalizeExtractedTitle(raw, { stripSiteSuffix = false } = {}) {
+    let title = decodeHtmlEntities(raw).replace(/\s+/g, ' ').trim();
+    if (!title) return '';
+    if (stripSiteSuffix) {
+        title = title.replace(/\s*[-|–—]\s*(POLITICO|Reuters|AP News|Associated Press|CNN|BBC News|NPR|Forbes|Bloomberg|The New York Times|Washington Post|Wall Street Journal|Axios)\s*$/i, '').trim();
+    }
+    if (title.length < 12 || title.length > 300) return '';
+    return title;
+}
+
+// Pull the canonical headline from page metadata — same idea as extractPublishDate.
+const extractPublishTitle = (html) => {
+    if (!html) return '';
+
+    const metaPatterns = [
+        { pattern: /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i, stripSiteSuffix: false },
+        { pattern: /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i, stripSiteSuffix: false },
+        { pattern: /<meta[^>]+name=["']twitter:title["'][^>]+content=["']([^"']+)["']/i, stripSiteSuffix: false },
+        { pattern: /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:title["']/i, stripSiteSuffix: false },
+        { pattern: /"headline"\s*:\s*"((?:\\.|[^"\\])*)"/i, stripSiteSuffix: false },
+        { pattern: /<title[^>]*>([^<]+)<\/title>/i, stripSiteSuffix: true },
+    ];
+
+    for (const { pattern, stripSiteSuffix } of metaPatterns) {
+        const match = html.match(pattern);
+        if (!match || !match[1]) continue;
+        const raw = match[1].replace(/\\"/g, '"').replace(/\\n/g, ' ').trim();
+        const title = normalizeExtractedTitle(raw, { stripSiteSuffix });
+        if (title) return title;
+    }
+
+    return '';
+};
+
+const ARTICLE_MAX_AGE_DAYS = parseInt(process.env.ARTICLE_MAX_AGE_DAYS || '7', 10);
+
+function parseArticleDateMMDDYY(dateStr) {
+    const m = String(dateStr || '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (!m) return null;
+    const month = parseInt(m[1], 10);
+    const day = parseInt(m[2], 10);
+    let year = parseInt(m[3], 10);
+    if (m[3].length === 2) year = year <= 50 ? 2000 + year : 1900 + year;
+    const d = new Date(year, month - 1, day);
+    if (Number.isNaN(d.getTime())) return null;
+    return d;
+}
+
+function isArticleTooOld(dateStr, maxAgeDays = ARTICLE_MAX_AGE_DAYS) {
+    const d = parseArticleDateMMDDYY(dateStr);
+    if (!d) return false;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - maxAgeDays);
+    cutoff.setHours(0, 0, 0, 0);
+    return d < cutoff;
+}
+
+function shouldAutoRejectUrl(url) {
+    return shouldRejectArticleUrl(url);
+}
+
 // Helper to verify URL and fetch content
 const attemptFetchAndAnalyze = async (url, skipScraping = false, title = '', userAgent = null) => {
-    if (!url) return { isValid: false, content: '' };
+    if (!url) return { isValid: false, content: '', extractedDate: '', extractedTitle: '' };
 
     // If we want to skip scraping, and the URL is already a final publisher URL (not a google search redirect),
     // we don't need to perform any network request at all! This saves massive amount of time.
     const isGoogleRedirect = url.includes('vertexaisearch.cloud.google.com');
     if (skipScraping && !isGoogleRedirect) {
-        return { isValid: true, isReadable: false, content: '', finalUrl: url };
+        return { isValid: true, isReadable: false, content: '', finalUrl: url, extractedDate: extractPublishDate('', url), extractedTitle: '' };
     }
 
     try {
@@ -110,20 +247,21 @@ const attemptFetchAndAnalyze = async (url, skipScraping = false, title = '', use
         // 404/410 are definitely dead.
         if (response.status === 404 || response.status === 410) {
             console.log(`URL ${url} returned ${response.status}. Invalid.`);
-            return { isValid: false, content: '', finalUrl: response.url };
+            return { isValid: false, content: '', finalUrl: response.url, extractedDate: '', extractedTitle: '' };
         }
 
         // If we are skipping scraping, we are only here to resolve the google search redirect to the final URL.
-        // We do not need to download the HTML body or scrape the page.
+        // We do not need to download the HTML body or scrape the page. We can still try to
+        // pull a date out of the resolved URL itself, since that costs nothing extra.
         if (skipScraping) {
-            return { isValid: true, isReadable: false, content: '', finalUrl: response.url };
+            return { isValid: true, isReadable: false, content: '', finalUrl: response.url, extractedDate: extractPublishDate('', response.url), extractedTitle: '' };
         }
 
         // 403/401/429/5xx might be valid URLs blocking bots.
         // We'll mark them valid but content-less so we don't discard real news.
         if (!response.ok) {
             console.log(`URL ${url} returned ${response.status}. Treating as valid but unreadable.`);
-            return { isValid: true, isReadable: false, content: '', finalUrl: response.url };
+            return { isValid: true, isReadable: false, content: '', finalUrl: response.url, extractedDate: extractPublishDate('', response.url), extractedTitle: '' };
         }
 
         const contentType = (response.headers.get('content-type') || '').toLowerCase();
@@ -137,14 +275,21 @@ const attemptFetchAndAnalyze = async (url, skipScraping = false, title = '', use
                              url.toLowerCase().includes('.pdf?');
         if (isBinaryType) {
             console.log(`URL ${url} is a PDF or binary media file (Content-Type: ${contentType}). Treating as unreadable.`);
-            return { isValid: true, isReadable: false, content: '', finalUrl: response.url };
+            return { isValid: true, isReadable: false, content: '', finalUrl: response.url, extractedDate: extractPublishDate('', response.url), extractedTitle: '' };
         }
 
         const text = await response.text();
         if (text.startsWith('%PDF-') || text.includes('PDF-1.') || text.substring(0, 100).includes('%PDF')) {
             console.log(`URL ${url} returned binary PDF content. Treating as unreadable.`);
-            return { isValid: true, isReadable: false, content: '', finalUrl: response.url };
+            return { isValid: true, isReadable: false, content: '', finalUrl: response.url, extractedDate: extractPublishDate('', response.url), extractedTitle: '' };
         }
+
+        // Pull the publish date from the raw HTML (meta tags / JSON-LD / <time>) before
+        // the tag-stripping below destroys that markup. Falls back to the URL if the page
+        // itself has nothing usable.
+        const extractedDate = extractPublishDate(text, response.url);
+        const extractedTitle = extractPublishTitle(text);
+        const titleForCheck = extractedTitle || title;
         // Simple extraction of body text (stripping tags)
         const content = text.replace(/<script[^>]*>([\S\s]*?)<\/script>/gmi, '')
                             .replace(/<style[^>]*>([\S\s]*?)<\/style>/gmi, '')
@@ -189,9 +334,9 @@ const attemptFetchAndAnalyze = async (url, skipScraping = false, title = '', use
         const isTooShort = cleanedContent.length < 600;
 
         let isTitleMissing = false;
-        if (title && title.length > 0) {
+        if (titleForCheck && titleForCheck.length > 0) {
             // Find words with length > 4
-            const titleWords = title.toLowerCase().split(/\s+/).map(w => w.replace(/[^a-z0-9]/g, '')).filter(w => w.length > 4);
+            const titleWords = titleForCheck.toLowerCase().split(/\s+/).map(w => w.replace(/[^a-z0-9]/g, '')).filter(w => w.length > 4);
             if (titleWords.length > 0) {
                 // We want to ensure at least one significant word from the title appears in the content
                 const hasMatch = titleWords.some(w => lowerContent.includes(w));
@@ -204,11 +349,11 @@ const attemptFetchAndAnalyze = async (url, skipScraping = false, title = '', use
 
         const isReadable = !isBotBlocked && !isTooShort && !isTitleMissing;
 
-        return { isValid: true, isReadable, content: cleanedContent, finalUrl: response.url };
+        return { isValid: true, isReadable, content: cleanedContent, finalUrl: response.url, extractedDate, extractedTitle };
     } catch (error) {
         console.error(`Verification failed for ${url}:`, error.message);
         // Be lenient: if a redirect fails to resolve due to network issues, preserve the article rather than dropping it.
-        return { isValid: true, isReadable: false, content: '', finalUrl: url };
+        return { isValid: true, isReadable: false, content: '', finalUrl: url, extractedDate: extractPublishDate('', url), extractedTitle: '' };
     }
 };
 
@@ -355,6 +500,63 @@ const categorizeArticle = (article, content) => {
     article.categories = Array.from(categories);
     article.ranks = ranks;
     return article;
+};
+
+const CATEGORIZATION_BRIEF_PATH = path.join(__dirname, '../logs/newsletter_categorization_brief.md');
+let cachedCategorizationBrief = null;
+const getCategorizationBrief = () => {
+    if (cachedCategorizationBrief !== null) return cachedCategorizationBrief;
+    try {
+        cachedCategorizationBrief = fs.existsSync(CATEGORIZATION_BRIEF_PATH)
+            ? fs.readFileSync(CATEGORIZATION_BRIEF_PATH, 'utf8')
+            : '';
+    } catch (_) {
+        cachedCategorizationBrief = '';
+    }
+    return cachedCategorizationBrief;
+};
+
+// Reads the ACTUAL fetched article text (not the AI's search-result blurb) against
+// our editorial guidelines, and asks for a short summary of what the page actually
+// says. This is the only point in the pipeline that checks nuanced rules like
+// "ad/PR for one brand" or "bill hasn't passed yet" — the keyword categorizer above
+// can't judge those. Cheap/fast model since this runs once per verified article.
+const analyzeArticleContent = async (article, content) => {
+    if (!content || content.length < 300) return { summary: '', flagged: false, flagReason: '' };
+
+    const brief = getCategorizationBrief();
+    const systemPrompt = `You are an editorial reviewer for a cannabis/psychedelics newsletter. You will be given the ACTUAL fetched text of a news article, along with our editorial guidelines below.
+
+${brief}
+
+Your job:
+1. Write a factual 2-3 sentence summary of what this article actually says (based only on the fetched text, not the title).
+2. Decide whether this article should be REJECTED under the "Universal Rejection Rules" section above (ads/PR for one brand, press releases, paywalled content, a bill/law that hasn't passed yet and isn't extremely significant, purely local ordinances, international drug busts, anti-cannabis propaganda, opinion/editorial masquerading as news, too short/no real substance, old/archival content more than ${ARTICLE_MAX_AGE_DAYS} days old, TV/video clips instead of written news, Wikipedia or encyclopedia pages). Flagged items are dropped automatically — be strict.
+
+Return ONLY valid JSON, no markdown, no commentary:
+{"summary": "...", "flagged": true or false, "flagReason": "short reason if flagged, empty string otherwise"}`;
+
+    try {
+        const message = await anthropic.messages.create({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 500,
+            system: systemPrompt,
+            messages: [
+                { role: 'user', content: `Title: ${article.title || ''}\n\nFetched article text:\n${content.substring(0, 8000)}` },
+            ],
+        }, { timeout: 60000 });
+
+        const text = getAnthropicTextContent(message).replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+        const parsed = JSON.parse(text);
+        return {
+            summary: String(parsed.summary || '').trim(),
+            flagged: parsed.flagged === true,
+            flagReason: String(parsed.flagReason || '').trim(),
+        };
+    } catch (err) {
+        console.error(`analyzeArticleContent failed for "${article.title}":`, err.message);
+        return { summary: '', flagged: false, flagReason: '' };
+    }
 };
 
 // POST /api/articles/upload - Handle Excel Upload
@@ -581,7 +783,24 @@ function sanitizeArticlesForModify(articles) {
     }));
 }
 
-function resolveAiProvider(model) {
+function normalizeSearchEngine(value) {
+    const v = String(value || 'auto').trim().toLowerCase();
+    if (v === 'youcom' || v === 'you.com' || v === 'you') return 'youcom';
+    if (v === 'claude' || v === 'anthropic') return 'claude';
+    if (v === 'gemini' || v === 'google') return 'gemini';
+    return 'auto';
+}
+
+function resolvePhase1SearchMode(searchEngine, provider) {
+    const mode = normalizeSearchEngine(searchEngine);
+    if (mode === 'youcom') return 'youcom';
+    if (mode === 'claude') return 'claude';
+    if (mode === 'gemini') return 'gemini';
+    if (provider.isGemini || provider.isOpenRouter) return 'gemini';
+    return 'claude';
+}
+
+function resolveAiProvider(model, searchEngine = 'auto') {
     let apiModel = getApiModelId(model);
     let isOpenRouter = false;
 
@@ -591,13 +810,24 @@ function resolveAiProvider(model) {
     }
 
     const isGemini = apiModel.toLowerCase().includes('gemini');
+    const phase1Mode = resolvePhase1SearchMode(searchEngine, { isGemini, isOpenRouter });
 
-    // Gemini is only required when Gemini (or OpenRouter, which has no native search)
-    // is actually doing the web search. Claude models search with their own native
-    // web_search tool, so they don't need a Gemini key at all.
-    if ((isGemini || isOpenRouter) && !process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY) {
+    if (phase1Mode === 'youcom' && !getYouComApiKey()) {
         return {
-            error: 'GEMINI_API_KEY is not configured on the server. It is required for the web search engine when using a Gemini or OpenRouter model. Add it in Vercel, or switch to a Claude model.',
+            error: 'YDC_API_KEY is not configured on the server. Add your You.com API key to .env (or Vercel env vars) and restart, or choose Auto / Claude / Gemini search.',
+        };
+    }
+
+    // Gemini key only required when Gemini Google Search runs Phase 1.
+    if (phase1Mode === 'gemini' && !process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY) {
+        return {
+            error: 'GEMINI_API_KEY is not configured on the server. It is required for Gemini web search. Add it in Vercel, choose You.com search, or switch to a Claude model with Auto/Claude search.',
+        };
+    }
+
+    if (phase1Mode === 'claude' && !process.env.ANTHROPIC_API_KEY) {
+        return {
+            error: 'ANTHROPIC_API_KEY is not configured on the server. Required for Claude web search. Add it in Vercel or choose You.com search.',
         };
     }
 
@@ -607,12 +837,18 @@ function resolveAiProvider(model) {
         };
     }
 
+    if (isGemini && !process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY) {
+        return {
+            error: 'GEMINI_API_KEY is not configured on the server. Required for the selected Gemini model. Add it in Vercel → Settings → Environment Variables.',
+        };
+    }
+
     if (!isGemini && !isOpenRouter && !process.env.ANTHROPIC_API_KEY) {
         return {
             error: 'ANTHROPIC_API_KEY is not configured on the server. Add it in Vercel → Settings → Environment Variables.',
         };
     }
-    return { apiModel, isGemini, isOpenRouter };
+    return { apiModel, isGemini, isOpenRouter, phase1Mode };
 }
 
 async function mapWithConcurrency(items, limit, fn) {
@@ -676,17 +912,18 @@ function buildAiErrorResponse(error, model) {
 // POST /api/articles/search - AI Search & Filtering
 router.post('/search', async (req, res) => {
     try {
-        const { prompt, newsletterName, model, existingUrls } = req.body || {};
+        const { prompt, newsletterName, model, existingUrls, searchEngine } = req.body || {};
         if (!prompt || !String(prompt).trim()) {
             return res.status(400).json({ error: 'Please enter a search prompt.' });
         }
 
-        const provider = resolveAiProvider(model);
+        const provider = resolveAiProvider(model, searchEngine);
         if (provider.error) {
             return res.status(503).json({ error: provider.error, configured: false });
         }
 
-        console.log(`Received search request: "${prompt}" for ${newsletterName} using model ${model}`);
+        const phase1Mode = provider.phase1Mode;
+        console.log(`Received search request: "${prompt}" for ${newsletterName} using model ${model}, searchEngine=${phase1Mode}`);
 
         // Use mock data if requested (for testing without burning credits)
         if (String(prompt).toLowerCase().includes('mock data')) {
@@ -711,11 +948,15 @@ router.post('/search', async (req, res) => {
         const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
         
         // --- PHASE 1: WEB SEARCH ---
-        // Claude models search with Anthropic's native web_search tool (no Google/Gemini
-        // dependency). Gemini and OpenRouter models fall back to Gemini's Google Search
-        // grounding since they have no equivalent native search of their own.
-        const useClaudeSearch = !isGemini && !provider.isOpenRouter;
-        console.log(`Phase 1: Fetching raw search results using ${useClaudeSearch ? 'Claude native web_search' : 'Gemini Search Engine'}`);
+        // youcom — You.com Web Search API (structured URLs/snippets)
+        // claude — Anthropic native web_search
+        // gemini — Gemini Google Search grounding
+        const useClaudeSearch = phase1Mode === 'claude';
+        const useYouComSearch = phase1Mode === 'youcom';
+        const phase1Label = useYouComSearch
+            ? 'You.com Web Search API'
+            : (useClaudeSearch ? 'Claude native web_search' : 'Gemini Search Engine');
+        console.log(`Phase 1: Fetching raw search results using ${phase1Label}`);
         let rawSearchResults = "";
 
         let existingUrlText = '';
@@ -723,13 +964,26 @@ router.post('/search', async (req, res) => {
             existingUrlText = `\nCRITICAL ANTI-DUPLICATION RULE: The user already has the following articles in their newsletter. You MUST NOT include these articles, and you MUST NOT include any articles from different publishers that cover the exact same story/topic. Find NEW stories only:\n${existingUrls.join('\n')}\n`;
         }
 
-        if (useClaudeSearch) {
+        if (useYouComSearch) {
+            try {
+                const youResult = await searchYouCom(prompt);
+                rawSearchResults = `${youResult.rawText}\n\n${existingUrlText}`.trim();
+                console.log(`Phase 1 Complete. You.com returned ${youResult.totalCount} results (${youResult.newsCount} news, ${youResult.webCount} web).`);
+            } catch (searchErr) {
+                console.error('Phase 1 Search Error (You.com):', searchErr);
+                return res.status(searchErr.status === 401 || searchErr.status === 402 ? 503 : 500).json({
+                    error: searchErr.message || 'You.com search failed',
+                    errorCode: searchErr.code || 'youcom_search_failed',
+                    details: searchErr.message,
+                });
+            }
+        } else if (useClaudeSearch) {
             try {
                 const searchConfig = getAnthropicSearchConfig(model);
                 const searchPrompt = `You are a research assistant. Today's date is ${today}.
 Search the web for news articles matching the following user request: "${prompt}"
 ${existingUrlText}
-CRITICAL DATE RULE: If the user specifies a date range or cutoff (e.g. "after June 1st, 2026"), you MUST strictly enforce it. Only include articles published within that date range. Do NOT include articles outside that range. Verify the publication date before including each article.
+CRITICAL DATE RULE: Unless the user prompt explicitly asks for older content, only include articles published within the last ${ARTICLE_MAX_AGE_DAYS} days. If the user specifies a different date range or cutoff (e.g. "after June 1st, 2026"), enforce that instead. Do NOT include articles outside the allowed window. Verify the publication date before including each article.
 
 CRITICAL URL RULE: You MUST provide the full, raw URL string starting with http:// or https://, taken directly from your search results. DO NOT use citation footnotes like [1] or [2]. DO NOT guess, hallucinate, or reverse-engineer URLs.
 
@@ -762,7 +1016,7 @@ Please return a comprehensive list of the articles you found, including their ti
                 const searchPrompt = `You are a research assistant. Today's date is ${today}.
 Search the web for news articles matching the following user request: "${prompt}"
 ${existingUrlText}
-CRITICAL DATE RULE: If the user specifies a date range or cutoff (e.g. "after June 1st, 2026"), you MUST strictly enforce it. Only include articles published within that date range. Do NOT include articles outside that range. Verify the publication date before including each article.
+CRITICAL DATE RULE: Unless the user prompt explicitly asks for older content, only include articles published within the last ${ARTICLE_MAX_AGE_DAYS} days. If the user specifies a different date range or cutoff (e.g. "after June 1st, 2026"), enforce that instead. Do NOT include articles outside the allowed window. Verify the publication date before including each article.
 
 CRITICAL URL RULE: You MUST provide the full, raw URL string starting with http:// or https://. DO NOT use citation footnotes like [1] or [2]. If the Google Search tool provides a "vertexaisearch.cloud.google.com" redirect link, YOU MUST USE THAT EXACT LINK. DO NOT try to guess, hallucinate, or reverse-engineer the original publisher URL, as that leads to broken links. Output the vertexaisearch link exactly as you received it.
 
@@ -792,8 +1046,10 @@ ${rawSearchResults}
 Your task is to parse these results and return a single valid JSON array containing the articles. 
 No markdown, no headers, no commentary, no explanation before or after.
 
+CRITICAL DATE RULE: Unless the user prompt explicitly asks for older content, only include articles published within the last ${ARTICLE_MAX_AGE_DAYS} days. Skip Wikipedia, video pages, ads, roundups, and newsletters. Do not include two entries for the same story — if titles match (syndicated on multiple sites), keep only one URL.
+
 Each object in the array must have exactly these keys:
-- "title": article headline
+- "title": exact article headline copied verbatim from the search results (do not paraphrase or rewrite)
 - "url": full article URL (use the exact URL provided in the search results)
 - "description": 1-2 sentence summary
 - "date": publication date in MM/DD/YY format (leave empty string if unknown)
@@ -879,14 +1135,20 @@ Example format:
             id: i + 1,
             needsVerification: true,
         }));
+        const { articles: dedupedRaw, skipped: duplicateCount } = dedupeArticleList(rawCleaned);
+        if (duplicateCount > 0) {
+            console.log(`Search deduped ${duplicateCount} article(s) with matching URL or title.`);
+        }
 
         res.json({
             success: true,
             newsletterName,
             source: 'ai',
             stage: 'raw',
-            count: rawCleaned.length,
-            articles: rawCleaned,
+            searchEngine: phase1Mode,
+            count: dedupedRaw.length,
+            duplicateCount,
+            articles: dedupedRaw.map((a, i) => ({ ...a, id: i + 1 })),
         });
 
     } catch (error) {
@@ -900,67 +1162,116 @@ Example format:
 // verification pass never throws away the (Claude-metered) search results.
 router.post('/verify', async (req, res) => {
     try {
-        const { articles: rawArticles, since, until } = req.body || {};
+        const { articles: rawArticles, existingArticles, since, until } = req.body || {};
         if (!Array.isArray(rawArticles) || rawArticles.length === 0) {
             return res.status(400).json({ error: 'No articles provided to verify.' });
         }
 
-        // Dates reported by an AI web search are unreliable: search engines surface an
-        // evergreen page's "updated" stamp, and a news page's furniture (a sidebar of
-        // other recent stories) gives a model several wrong dates to choose from. So we
-        // establish the real publication date from the publisher itself, then enforce
-        // the newsletter's date window on the corrected dates.
+        const rejected = [];
+
+        const dropArticle = (url, title, reason) => {
+            const entry = { url: url || '', title: title || '', reason: reason || 'rejected' };
+            rejected.push(entry);
+            console.log(`Dropping "${title || url}": ${reason}`);
+            return null;
+        };
+
+        // Shared across articles so one site's feed is fetched once, not per article.
         const dateCache = {};
-        const outOfWindow = [];
         const corrected = [];
 
         const processArticle = async (article) => {
             let cleaned = cleanArticleData(article, 0);
 
-            // Verify URL (skipScraping = true, which resolves redirects instantly but skips downloading body)
+            // Verify URL and actually fetch the page (skipScraping = false) — we need the
+            // real HTML to confirm the publish date and to let the AI read the real text
+            // instead of trusting whatever date/summary the search step guessed.
             if (!cleaned.url || cleaned.url.includes('example.com') || cleaned.url === '#') {
-                return null;
+                return dropArticle(cleaned.url, cleaned.title, 'invalid URL');
             }
 
-            const { isValid, isReadable, content, finalUrl } = await verifyAndAnalyzeUrl(cleaned.url, true);
+            if (shouldAutoRejectUrl(cleaned.url)) {
+                return dropArticle(cleaned.url, cleaned.title, 'non-news URL (video, Wikipedia, etc.)');
+            }
+
+            const { isValid, isReadable, content, finalUrl, extractedDate, extractedTitle } = await verifyAndAnalyzeUrl(cleaned.url, false, cleaned.title);
 
             if (!isValid) {
-                console.log(`Skipping invalid URL (failed verification): ${cleaned.url}`);
-                return null;
+                return dropArticle(cleaned.url, cleaned.title, 'URL failed verification');
             }
 
             if (finalUrl) {
                 cleaned.url = finalUrl;
             }
 
-            // Google News redirect links can't be opened, so their feed date stands.
-            if (!cleaned.url.includes('news.google.com')) {
+            if (extractedTitle) {
+                cleaned.title = extractedTitle;
+            }
+
+            if (shouldAutoRejectUrl(cleaned.url)) {
+                return dropArticle(cleaned.url, cleaned.title, 'non-news URL (video, Wikipedia, etc.)');
+            }
+
+            // Never keep the AI's self-reported date — replace it with whatever we could
+            // actually confirm from the page or URL. If the page loaded fine but has no
+            // confirmable date anywhere, we can't vouch for it, so drop the article rather
+            // than show a date we can't back up. If the page itself couldn't be read (bot
+            // blocked, paywalled, etc.), keep the article — same lenient handling as
+            // before — but still don't claim a date we couldn't verify.
+            const aiReportedDate = cleaned.date;
+            cleaned.date = extractedDate || '';
+
+            // A bot-walled page yields no date from the fetch above, but the publisher's
+            // own feed usually still carries it (MJBizDaily serves its RSS to us while
+            // blocking every article page). Google News redirect links can't be opened at
+            // all, so whatever date came with them stands.
+            if (!cleaned.date && !cleaned.url.includes('news.google.com')) {
                 const resolved = await prioritySources.resolveArticleDate(cleaned.url, dateCache);
                 if (resolved.date) {
-                    const real = prioritySources.formatDateMMDDYY(resolved.date);
-                    if (real && real !== cleaned.date) {
-                        corrected.push({ title: cleaned.title, was: cleaned.date, now: real, via: resolved.via });
-                        cleaned.date = real;
-                    }
-                    cleaned.dateVerified = true;
-                    // An old post whose "updated" stamp is recent is an evergreen
-                    // explainer, not news — the window check below drops it.
+                    cleaned.date = prioritySources.formatDateMMDDYY(resolved.date);
+                    cleaned.dateVerifiedVia = resolved.via;
+                    // A months-old post whose "updated" stamp is recent is an evergreen
+                    // explainer rather than news; the window check below drops it.
                     if (resolved.modified) cleaned.dateModified = prioritySources.formatDateMMDDYY(resolved.modified);
                 }
+            }
 
-                if ((since || until) && resolved.date && !prioritySources.withinWindow(resolved.date, since, until)) {
-                    outOfWindow.push({ title: cleaned.title, date: cleaned.date, url: cleaned.url });
-                    console.log(`Dropping ${cleaned.url}: published ${cleaned.date}, outside ${since || 'any'}..${until || 'today'}`);
-                    return null;
-                }
+            if (cleaned.date && cleaned.date !== aiReportedDate) {
+                corrected.push({ title: cleaned.title, was: aiReportedDate || '(none)', now: cleaned.date, via: cleaned.dateVerifiedVia || 'page' });
+            }
+
+            if (isReadable && !cleaned.date) {
+                return dropArticle(cleaned.url, cleaned.title, 'no confirmable publish date');
+            }
+
+            if (cleaned.date && isArticleTooOld(cleaned.date)) {
+                return dropArticle(cleaned.url, cleaned.title, `older than ${ARTICLE_MAX_AGE_DAYS} days (${cleaned.date})`);
+            }
+
+            // Explicit newsletter window, when the caller sent one. Narrower and more
+            // precise than the blanket max-age rule above.
+            if ((since || until) && cleaned.date && !prioritySources.withinWindow(cleaned.date, since, until)) {
+                return dropArticle(cleaned.url, cleaned.title, `published ${cleaned.date}, outside ${since || 'any'}..${until || 'today'}`);
             }
 
             // Categorize (and apply rejection rules from brief, using description fallback if unreadable/skipped)
             cleaned = categorizeArticle(cleaned, content);
 
             if (!cleaned) {
-                console.log(`Skipping rejected article (rule violation): ${article.url}`);
-                return null;
+                return dropArticle(article.url, article.title, 'rule violation');
+            }
+
+            // Only the real fetched text lets us summarize accurately and check nuanced
+            // guideline violations (ads, unpassed bills, etc.) — skip this when the page
+            // wasn't readable, since we'd just be judging the AI's own blurb again.
+            if (isReadable && content) {
+                const analysis = await analyzeArticleContent(cleaned, content);
+                cleaned.summary = analysis.summary;
+                if (analysis.flagged) {
+                    return dropArticle(cleaned.url, cleaned.title, analysis.flagReason || 'editorial rejection');
+                }
+            } else {
+                cleaned.summary = '';
             }
 
             return cleaned;
@@ -971,20 +1282,28 @@ router.post('/verify', async (req, res) => {
         // Filter out nulls (rejected articles)
         const validArticles = results.filter(a => a !== null);
 
-        // Re-index
-        const finalArticles = validArticles.map((a, i) => ({ ...a, id: i + 1 }));
+        const indexed = validArticles.map((a, i) => ({ ...a, id: i + 1 }));
+        const { articles: finalArticles, skipped: duplicateCount } = filterDuplicateArticles(
+            indexed,
+            Array.isArray(existingArticles) ? existingArticles : [],
+        );
+        if (duplicateCount > 0) {
+            console.log(`Verify deduped ${duplicateCount} article(s) with matching URL or title.`);
+        }
 
         console.log(
-            `Verification complete: ${finalArticles.length}/${rawArticles.length} valid. `
-            + `${corrected.length} date(s) corrected, ${outOfWindow.length} dropped as outside the date window.`,
+            `Verification complete: ${finalArticles.length}/${rawArticles.length} articles kept `
+            + `(${rejected.length} dropped, ${duplicateCount} duplicates, ${corrected.length} date(s) corrected).`,
         );
 
         res.json({
             success: true,
             count: finalArticles.length,
             articles: finalArticles,
+            rejectedCount: rejected.length,
+            duplicateCount,
+            rejected,
             datesCorrected: corrected,
-            droppedOutOfWindow: outOfWindow,
         });
     } catch (error) {
         console.error('Error with article verification:', error);
@@ -1177,38 +1496,149 @@ Do not add or remove articles. No markdown, no code fences, no commentary.`;
     }
 });
 
+function getManualContentForArticle(article, index, manualContent) {
+    if (!manualContent || typeof manualContent !== 'object') return '';
+    const url = String((article && article.url) || '').trim();
+    if (url && typeof manualContent[url] === 'string' && manualContent[url].trim()) {
+        return manualContent[url].trim();
+    }
+    if (url && manualContent.byUrl && typeof manualContent.byUrl[url] === 'string') {
+        return String(manualContent.byUrl[url] || '').trim();
+    }
+    const byIndex = manualContent[index] || manualContent[String(index)];
+    return String(byIndex || '').trim();
+}
+
+function contentMatchesArticleTitle(title, content) {
+    const titleWords = String(title || '')
+        .toLowerCase()
+        .split(/\s+/)
+        .map((w) => w.replace(/[^a-z0-9]/g, ''))
+        .filter((w) => w.length > 4);
+    if (titleWords.length === 0) return true;
+    const lower = String(content || '').toLowerCase();
+    const hits = titleWords.filter((w) => lower.includes(w)).length;
+    return hits >= Math.min(2, titleWords.length);
+}
+
+// The Text page articles box is what the user sees as 1, 2, 3. Older clients
+// still send leftover URLs in that box while only putting pick-order rows in
+// `articles`, so the model tried PsyPost without a fetched body. Always take
+// the first 3 URLs from the box / prompt, then fill from the articles array.
+function parseSummarizeBoxArticles(prompt) {
+    const text = String(prompt || '').replace(/\r\n/g, '\n');
+    const chunks = text.split(/\n\n+/);
+    const result = [];
+    const used = new Set();
+    chunks.forEach((chunk) => {
+        if (result.length >= 3) return;
+        const urlMatch = String(chunk).match(/https?:\/\/[^\s]+/);
+        if (!urlMatch) return;
+        const url = urlMatch[0].replace(/[),.;]+$/, '');
+        if (!url || used.has(url)) return;
+        used.add(url);
+        const title = String(chunk)
+            .replace(urlMatch[0], '')
+            .replace(/^\s*\d+\.\s*\[[^\]]*\]\s*/, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+        result.push({ title, url, date: '', description: '' });
+    });
+    return result;
+}
+
+function sanitizeSummaryRules(rules) {
+    const extra = '\nNever write that a link could not be accessed, would not load, or that you need the text. Summarize every fetched article.';
+    const cleaned = String(rules || '')
+        .split('\n')
+        .filter((line) => {
+            const l = line.toLowerCase();
+            if (l.includes('could not be accessed')) return false;
+            if (l.includes('couldn\'t be accessed')) return false;
+            if (l.includes('explicitly state that the link')) return false;
+            if (l.includes('paywall prevents access')) return false;
+            if (l.includes('article is paywalled')) return false;
+            return true;
+        })
+        .join('\n')
+        .trim();
+    return cleaned ? `${cleaned}${extra}` : extra.trim();
+}
+
+function summaryLooksIncomplete(text) {
+    const t = String(text || '').toLowerCase();
+    return /could not be accessed|couldn't be accessed|could not access|wouldn't load|would not load|did not load|could not summarize|couldn't summarize|send me the text|run (this|it) again|link did not load/.test(t);
+}
+
+function resolveSummarizeArticleInputs(prompt, articles) {
+    const fromClient = (Array.isArray(articles) ? articles : []).map((a) => ({
+        title: a.title || '',
+        url: String(a.url || '').trim(),
+        date: a.date || '',
+        description: a.description || '',
+    })).filter((a) => a.url);
+    const fromBox = parseSummarizeBoxArticles(prompt);
+    const byUrl = new Map(fromClient.map((a) => [a.url, a]));
+    const merged = [];
+    const used = new Set();
+    const add = (item) => {
+        if (!item || !item.url || used.has(item.url) || merged.length >= 3) return;
+        used.add(item.url);
+        const extra = byUrl.get(item.url);
+        merged.push({
+            title: (extra && extra.title) || item.title || '',
+            url: item.url,
+            date: (extra && extra.date) || item.date || '',
+            description: (extra && extra.description) || item.description || '',
+        });
+    };
+    fromBox.forEach(add);
+    fromClient.forEach(add);
+    return merged;
+}
+
 // POST /api/articles/summarize - Generate Summaries (supports Anthropic or Gemini)
 router.post('/summarize', async (req, res) => {
     try {
-        const { prompt, useRules, summaryRules, category, model, articles } = req.body;
+        const { prompt, useRules, summaryRules, category, model, articles, checkOnly } = req.body;
 
-        if (!prompt) {
+        if (!checkOnly && !prompt) {
             return res.status(400).json({ error: 'Prompt is required' });
         }
-        if (!Array.isArray(articles) || articles.length === 0) {
+        const articleInputs = resolveSummarizeArticleInputs(prompt, articles);
+        if (articleInputs.length === 0) {
             return res.status(400).json({ error: 'Articles are required for category summary generation' });
         }
 
-        const provider = resolveAiProvider(model);
-        if (provider.error) {
-            return res.status(503).json({ error: provider.error });
+        let apiModel = '';
+        let isGemini = false;
+        let isOpenRouter = false;
+        if (!checkOnly) {
+            const provider = resolveAiProvider(model);
+            if (provider.error) {
+                return res.status(503).json({ error: provider.error });
+            }
+            apiModel = provider.apiModel;
+            isGemini = provider.isGemini;
+            isOpenRouter = provider.isOpenRouter;
+            console.log(`Generating summaries for ${category} with rules: ${useRules} (${isGemini ? 'Gemini' : (isOpenRouter ? 'OpenRouter' : 'Claude')})`);
+        } else {
+            console.log(`Checking article content for ${category} before summarize`);
         }
-        const { apiModel, isGemini, isOpenRouter } = provider;
-
-        console.log(`Generating summaries for ${category} with rules: ${useRules} (${isGemini ? 'Gemini' : (isOpenRouter ? 'OpenRouter' : 'Claude')})`);
 
         // Load base prompt from config file (editable via UI) with hardcoded fallback
-        let systemPrompt;
+        let systemPrompt = '';
+        if (!checkOnly) {
         try {
             const promptFile = path.join(__dirname, '../config/summary_base_prompt.txt');
             systemPrompt = fs.existsSync(promptFile) ? fs.readFileSync(promptFile, 'utf8').trim() : '';
         } catch (_) { systemPrompt = ''; }
         if (!systemPrompt) {
-            systemPrompt = `You are a professional newsletter editor. Create a newsletter-ready summary for the provided category articles only.\n\nWrite exactly 6 to 7 short lines total.\nEach line should be concise, natural, and publication-ready.\nOnly use the fetched article content and article metadata provided by the user.\nDo not use outside knowledge.\nDo not mention URLs in the output.\nFocus on the most important developments across the provided articles for the selected category.\nIf some links could not be accessed, briefly note that in one short line.`;
+            systemPrompt = `You are a professional newsletter editor. Create a newsletter-ready summary for the provided category articles only.\n\nWrite exactly 6 to 7 short lines total.\nEach line should be concise, natural, and publication-ready.\nOnly use the fetched article content and article metadata provided by the user.\nDo not use outside knowledge.\nDo not mention URLs in the output.\nFocus on the most important developments across the provided articles for the selected category.\nNever say a link could not be accessed. Summarize every fetched article.`;
         }
 
         if (useRules && summaryRules && summaryRules.trim()) {
-            systemPrompt += `\n\nHere are the specific rules you MUST follow:\n${summaryRules}`;
+            systemPrompt += `\n\nHere are the specific rules you MUST follow:\n${sanitizeSummaryRules(summaryRules)}`;
         } else if (useRules) {
             try {
                 const fs = require('fs');
@@ -1216,7 +1646,7 @@ router.post('/summarize', async (req, res) => {
                 const rulesPath = path.join(__dirname, '../newsletter_summary_rules.md');
                 if (fs.existsSync(rulesPath)) {
                     const rules = fs.readFileSync(rulesPath, 'utf8');
-                    systemPrompt += `\n\nHere are the specific rules you MUST follow:\n${rules}`;
+                    systemPrompt += `\n\nHere are the specific rules you MUST follow:\n${sanitizeSummaryRules(rules)}`;
                 }
             } catch (err) {
                 console.error('Failed to read rules file:', err);
@@ -1225,13 +1655,7 @@ router.post('/summarize', async (req, res) => {
         
         // Always enforce no conversational filler, even if the user overwrote the base prompt
         systemPrompt += `\n\nCRITICAL INSTRUCTION: Output ONLY the newsletter content itself. Do NOT include any conversational filler, greetings, or introductory phrases such as "Here is your summary paragraph:" or "Here's the summary:".`;
-
-        const articleInputs = articles.map(a => ({
-            title: a.title || '',
-            url: a.url || '',
-            date: a.date || '',
-            description: a.description || '',
-        }));
+        }
 
         const fetchedArticles = await Promise.all(articleInputs.map(async (article) => {
             const inspected = await verifyAndAnalyzeUrl(article.url, false, article.title);
@@ -1243,30 +1667,34 @@ router.post('/summarize', async (req, res) => {
             };
         }));
 
-        // Check for unreadable articles and accept manual content override
         const { manualContent, confirmed } = req.body;
-        const unreadableArticles = fetchedArticles
-            .map((article, index) => ({
-                ...article,
+
+        const articlePayload = fetchedArticles.map((article, index) => {
+            const manualEntry = getManualContentForArticle(article, index, manualContent);
+            const scraped = article.content ? article.content.substring(0, 6000) : '';
+            const hasUsableManual = !!(manualEntry && contentMatchesArticleTitle(article.title, manualEntry));
+            const hasUsableScrape = !!(article.readable && scraped && contentMatchesArticleTitle(article.title, scraped));
+            const content = hasUsableManual ? manualEntry : (hasUsableScrape ? scraped : '');
+            const readable = hasUsableManual || hasUsableScrape;
+            return {
                 index: index + 1,
-            }))
-            .filter(article => !article.readable);
+                title: article.title,
+                url: article.url,
+                date: article.date,
+                description: article.description,
+                accessible: article.accessible,
+                readable,
+                content,
+            };
+        });
 
-        // Only ask for manual content for unreadable articles that are in the selected articles list
-        const unreadableSelectedArticles = unreadableArticles.filter(article =>
-            articles.some(a => a.url === article.url)
-        );
-
-        // Always show the manual-content prompt for unreadable articles, even when
-        // cached/previously-saved text exists for them — the modal pre-fills that text
-        // so the user can see and confirm it (or replace it) rather than it being
-        // silently reused. Only skip the prompt once the client has explicitly
-        // confirmed via that modal (the retry request sets confirmed: true).
-        if (unreadableSelectedArticles.length > 0 && !confirmed) {
+        const stillMissing = articlePayload.filter((article) => !article.content || !article.readable);
+        if (stillMissing.length > 0) {
+            console.log(`Summarize needs paste for ${category}:`, stillMissing.map((a) => a.url));
             return res.status(400).json({
                 success: false,
-                error: `${unreadableSelectedArticles.length} selected article(s) could not be fetched`,
-                unreadableArticles: unreadableSelectedArticles.map(a => ({
+                error: `${stillMissing.length} selected article(s) could not be fetched`,
+                unreadableArticles: stillMissing.map((a) => ({
                     index: a.index,
                     title: a.title,
                     url: a.url,
@@ -1276,27 +1704,15 @@ router.post('/summarize', async (req, res) => {
             });
         }
 
-        // Merge manual content with fetched content
-        const articlePayload = fetchedArticles.map((article, index) => {
-            const manualEntry = manualContent && manualContent[index];
-            return {
-                index: index + 1,
-                title: article.title,
-                url: article.url,
-                date: article.date,
-                description: article.description,
-                accessible: article.accessible,
-                readable: article.readable,
-                content: manualEntry || (article.content ? article.content.substring(0, 6000) : ''),
-            };
-        });
+        if (checkOnly) {
+            return res.json({ success: true, ready: true, articleCount: articlePayload.length });
+        }
+
+        systemPrompt += `\n\nSummarize every article in the fetched-articles JSON. Do not mention URLs. Do not say a link could not be accessed when that article has content. Ignore any extra links that are not in the fetched-articles JSON.`;
 
         const userMessage = [
             `Category: ${category}`,
-            'User prompt:',
-            prompt,
-            '',
-            'Fetched articles:',
+            'Fetched articles (summarize these only, in this order):',
             JSON.stringify(articlePayload, null, 2),
         ].join('\n');
 
@@ -1337,6 +1753,21 @@ router.post('/summarize', async (req, res) => {
             });
         }
 
+        if (summaryLooksIncomplete(content)) {
+            console.log(`Summarize incomplete draft for ${category}, asking for paste`);
+            return res.status(400).json({
+                success: false,
+                error: 'Summary said an article could not be loaded',
+                unreadableArticles: articlePayload.map((a) => ({
+                    index: a.index,
+                    title: a.title,
+                    url: a.url,
+                    date: a.date,
+                })),
+                needsManualContent: true,
+            });
+        }
+
         res.json({
             success: true,
             resultText: content
@@ -1345,6 +1776,130 @@ router.post('/summarize', async (req, res) => {
     } catch (error) {
         console.error('Error generating summaries:', error);
         res.status(500).json({ error: 'Failed to generate summaries', details: error.message });
+    }
+});
+
+function parseLabeledNewsletters(raw) {
+    const result = { MED: '', THC: '', CBD: '', INV: '' };
+    const matched = new Set();
+    const text = String(raw || '').replace(/\r\n/g, '\n').trim();
+    if (!text) return { result, matched };
+    const re = /(?:^|\n)[-—–]{1,3}\s*(MED|THC|CBD|INV)\s*[-—–]{1,3}\s*\n([\s\S]*?)(?=\n[-—–]{1,3}\s*(?:MED|THC|CBD|INV)\s*[-—–]{1,3}\s*\n|$)/gi;
+    let match;
+    while ((match = re.exec(text)) !== null) {
+        const cat = match[1].toUpperCase();
+        result[cat] = match[2].trim();
+        matched.add(cat);
+    }
+    return { result, matched };
+}
+
+function formatLabeledNewsletters(map) {
+    return ['MED', 'THC', 'CBD', 'INV'].map((cat) => `--- ${cat} ---\n${map[cat] || ''}`).join('\n\n');
+}
+
+// POST /api/articles/rewrite-newsletters - Apply an editor change request to all four drafts
+router.post('/rewrite-newsletters', async (req, res) => {
+    try {
+        const { content, changeRequest, model } = req.body || {};
+        if (!String(content || '').trim()) {
+            return res.status(400).json({ error: 'Original newsletter copy is required.' });
+        }
+        if (!String(changeRequest || '').trim()) {
+            return res.status(400).json({ error: 'A change request is required.' });
+        }
+
+        const provider = resolveAiProvider(model);
+        if (provider.error) {
+            return res.status(503).json({ error: provider.error });
+        }
+        const { apiModel, isGemini, isOpenRouter } = provider;
+
+        const originalParsed = parseLabeledNewsletters(content);
+        if (originalParsed.matched.size === 0) {
+            return res.status(400).json({ error: 'Original copy must include --- MED ---, --- THC ---, --- CBD ---, and --- INV --- sections.' });
+        }
+
+        const systemPrompt = `You are a professional newsletter editor. The user will give you four newsletter drafts labeled --- MED ---, --- THC ---, --- CBD ---, and --- INV ---, plus a change request.
+
+Rules:
+- Apply the change request to the drafts.
+- Keep the same four section headers exactly, in this order: --- MED ---, --- THC ---, --- CBD ---, --- INV ---
+- Do not add conversational filler, markdown fences, titles, or commentary before or after the drafts.
+- Do not invent news, facts, URLs, or articles that are not already in the drafts unless the change request explicitly asks for new wording.
+- Preserve the voice and structure of sections the request does not mention.
+- Output ONLY the four labeled newsletters.`;
+
+        const userMessage = [
+            'Change request:',
+            String(changeRequest).trim(),
+            '',
+            'Current drafts:',
+            String(content).trim(),
+        ].join('\n');
+
+        let rewritten = '';
+        if (isGemini) {
+            const geminiModel = genAI.getGenerativeModel({ model: apiModel });
+            const fullPrompt = `${systemPrompt}\n\n${userMessage}`;
+            const result = await geminiModel.generateContent(fullPrompt);
+            rewritten = result.response.text();
+        } else if (isOpenRouter) {
+            const response = await openrouter.chat.completions.create({
+                model: apiModel,
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userMessage },
+                ],
+            });
+            rewritten = response.choices[0]?.message?.content || '';
+        } else {
+            const supportsEffort = !apiModel.includes('haiku');
+            const message = await anthropic.messages.create({
+                model: apiModel,
+                max_tokens: 8000,
+                system: systemPrompt,
+                ...(supportsEffort ? { output_config: { effort: 'low' } } : {}),
+                messages: [
+                    { role: 'user', content: userMessage },
+                ],
+            });
+            rewritten = getAnthropicTextContent(message);
+        }
+
+        rewritten = String(rewritten || '')
+            .replace(/^```[a-z]*\s*/i, '')
+            .replace(/\s*```$/i, '')
+            .trim();
+
+        if (!rewritten) {
+            return res.status(500).json({
+                success: false,
+                error: 'Model returned no rewritten text (empty response).',
+            });
+        }
+
+        const rewrittenParsed = parseLabeledNewsletters(rewritten);
+        if (rewrittenParsed.matched.size === 0) {
+            return res.status(500).json({
+                success: false,
+                error: 'Model did not return labeled MED/THC/CBD/INV sections.',
+                details: rewritten.slice(0, 500),
+            });
+        }
+
+        const merged = { ...originalParsed.result };
+        rewrittenParsed.matched.forEach((cat) => {
+            merged[cat] = rewrittenParsed.result[cat];
+        });
+
+        res.json({
+            success: true,
+            resultText: formatLabeledNewsletters(merged),
+        });
+    } catch (error) {
+        console.error('Error rewriting newsletters:', error);
+        res.status(500).json(buildAiErrorResponse(error, req.body && req.body.model));
     }
 });
 

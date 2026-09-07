@@ -102,10 +102,8 @@ const DEFAULT_SUMMARY_RULES = [
     '2.  Do not use prior knowledge.',
     '3.  Do not supplement with outside research.',
     '4.  Do not infer facts not explicitly stated in the article.',
-    '5.  If a link cannot be accessed, explicitly state that the link could',
-    '    not be accessed.',
-    '6.  If a paywall prevents access, explicitly state that the article is',
-    '    paywalled.',
+    '5.  Never write that a link could not be accessed. Only summarize fetched article bodies.',
+    '6.  Never write that an article is paywalled in the newsletter copy.',
     '7.  If partial access is available, only summarize the visible content.',
     '8.  Dont use em dashes',
     '9.  Final product should be a paragraph',
@@ -160,6 +158,11 @@ let newsletterContent = {
     publicImageSubfolder: DEFAULT_ARTICLE_PUBLIC_SUBFOLDER,
     stateIconsPublicBase: DEFAULT_STATE_ICONS_PUBLIC_BASE,
     inspirationalPublicBase: DEFAULT_INSPIRATIONAL_PUBLIC_BASE,
+    articleSearchEngine: 'youcom',
+    bulkOriginalText: '',
+    bulkChangeRequest: '',
+    bulkUpdatedText: '',
+    bulkWorkflowTab: 'original',
 };
 let currentEditorTab = 'MED';
 let currentConfirmationTab = 'MED';
@@ -181,7 +184,7 @@ try {
     if (saved) {
         const data = JSON.parse(saved);
         if (Array.isArray(data)) {
-            articles = data;
+            articles = data.filter((a) => a.status !== 'FLAG');
             articles.forEach(repairArticleImagePreview);
         } else {
             applyWorkspaceState(data, { mergeLibrary: true });
@@ -195,6 +198,7 @@ try {
     repairMisplacedPurablisImageUrls();
     inferPublicImageSettingsFromArticles();
     syncPublicImageSettingsUi();
+    syncArticleSearchEngineUi();
     syncArticleImageFieldsFromPublished();
 } catch (e) {
     console.error('Failed to load state', e);
@@ -216,6 +220,7 @@ function buildWorkspaceState() {
         currentSessionName: sessionName,
         publicImageBase: newsletterContent.publicImageBase || DEFAULT_PUBLIC_IMAGE_BASE,
         publicImageSubfolder: newsletterContent.publicImageSubfolder || '',
+        articleSearchEngine: getArticleSearchEngine(),
     };
 }
 
@@ -635,6 +640,25 @@ function repairMisplacedPurablisImageUrls() {
     });
 }
 
+function syncArticleSearchEngineUi() {
+    const el = document.getElementById('article-search-engine');
+    if (el && newsletterContent.articleSearchEngine) {
+        el.value = newsletterContent.articleSearchEngine;
+    }
+}
+
+function getArticleSearchEngine() {
+    const el = document.getElementById('article-search-engine');
+    return (el && el.value) || newsletterContent.articleSearchEngine || 'auto';
+}
+
+window.updateArticleSearchEngine = () => {
+    const el = document.getElementById('article-search-engine');
+    if (!el) return;
+    newsletterContent.articleSearchEngine = el.value;
+    saveState();
+};
+
 function syncPublicImageSettingsUi() {
     const subfolderEl = document.getElementById('public-image-subfolder');
     const baseEl = document.getElementById('public-image-base');
@@ -853,7 +877,7 @@ function isSelectedArticle(article) {
 
 function applyWorkspaceState(state, { mergeLibrary = false } = {}) {
     const value = state || {};
-    articles = Array.isArray(value.articles) ? value.articles : [];
+    articles = Array.isArray(value.articles) ? value.articles.filter((a) => a.status !== 'FLAG') : [];
     articles.forEach(repairArticleImagePreview);
     archivedArticles = Array.isArray(value.archivedArticles) ? value.archivedArticles : [];
     laterCoolArticles = Array.isArray(value.laterCoolArticles) ? value.laterCoolArticles : [];
@@ -886,9 +910,10 @@ function applyWorkspaceState(state, { mergeLibrary = false } = {}) {
         stateIconsPublicBase: nc.stateIconsPublicBase || DEFAULT_STATE_ICONS_PUBLIC_BASE,
         inspirationalPublicBase: nc.inspirationalPublicBase || DEFAULT_INSPIRATIONAL_PUBLIC_BASE,
         editionDatePrefix: nc.editionDatePrefix || '',
+        articleSearchEngine: nc.articleSearchEngine || value.articleSearchEngine || 'youcom',
     };
     
-    // Auto-migrate legacy URLs to the new newsletter path
+    syncArticleSearchEngineUi();
     const baseLower = String(newsletterContent.publicImageBase || '').toLowerCase().trim();
     if (!newsletterContent.publicImageBase || 
         baseLower.includes('newsletter images') || 
@@ -927,6 +952,7 @@ function applyWorkspaceState(state, { mergeLibrary = false } = {}) {
         setCurrentSessionName(value.currentSessionName);
     }
     persistWorkspaceLocal(buildWorkspaceState());
+    restoreBulkWorkflowUi();
 }
 
 /**
@@ -1339,6 +1365,10 @@ window.startNewWeek = async () => {
         generatedSubjects: kept.generatedSubjects || { MED: '', THC: '', CBD: '', INV: '' },
         generatedHeadings: kept.generatedHeadings || { MED: '', THC: '', CBD: '', INV: '' },
         categoryPickOrder: kept.categoryPickOrder || { MED: '', THC: '', CBD: '', INV: '' },
+        bulkOriginalText: '',
+        bulkChangeRequest: '',
+        bulkUpdatedText: '',
+        bulkWorkflowTab: 'original',
     };
 
     saveState();
@@ -2749,7 +2779,7 @@ function getArticlesByPickOrder(category) {
 }
 
 function buildArticlesOnlyBlock(category) {
-    const categoryArticles = getArticlesByPickOrder(category);
+    const categoryArticles = getSummaryArticlesForCategory(category);
     if (categoryArticles.length === 0) {
         return '';
     }
@@ -2788,7 +2818,7 @@ window.syncCategoryPrompt = (category) => {
 };
 
 function mergeArticlesOnlyBlock(category, existingText) {
-    const categoryArticles = getArticlesByPickOrder(category);
+    const categoryArticles = getSummaryArticlesForCategory(category);
     if (categoryArticles.length === 0) {
         return '';
     }
@@ -2862,7 +2892,14 @@ function getSelectedCategoryResults() {
 
 function getNewsletterTextForCategory(category) {
     const selected = getSelectedCategoryResults();
-    return (selected[category] || (newsletterContent[category] && newsletterContent[category].result) || '').trim();
+    const created = ((newsletterContent[category] && newsletterContent[category].result) || '').trim();
+    const chosen = (selected[category] || '').trim();
+    // A Selected draft that still says a link wouldn't load is older than the
+    // Created Result it came from, so exporting it would ship the stale copy.
+    if (chosen && summaryDraftLooksIncomplete(chosen) && created && !summaryDraftLooksIncomplete(created)) {
+        return created;
+    }
+    return chosen || created;
 }
 
 function formatAllNewslettersForExport() {
@@ -2901,27 +2938,159 @@ function setBulkNewsletterStatus(message, isError = false) {
     el.classList.toggle('text-[#666]', !isError);
 }
 
+function getBulkWorkflowTab() {
+    return newsletterContent.bulkWorkflowTab === 'changes' || newsletterContent.bulkWorkflowTab === 'updated'
+        ? newsletterContent.bulkWorkflowTab
+        : 'original';
+}
+
+function persistBulkWorkflowFields() {
+    const orig = document.getElementById('editor-bulk-paste');
+    const req = document.getElementById('editor-bulk-change-request');
+    const upd = document.getElementById('editor-bulk-updated');
+    if (orig) newsletterContent.bulkOriginalText = orig.value;
+    if (req) newsletterContent.bulkChangeRequest = req.value;
+    if (upd) newsletterContent.bulkUpdatedText = upd.value;
+    saveState();
+}
+
+window.persistBulkWorkflowFields = persistBulkWorkflowFields;
+
+function getBulkApplySourceEl() {
+    const tab = getBulkWorkflowTab();
+    if (tab === 'updated') return document.getElementById('editor-bulk-updated');
+    if (tab === 'changes') {
+        const updatedEl = document.getElementById('editor-bulk-updated');
+        if (updatedEl && updatedEl.value.trim()) return updatedEl;
+    }
+    return document.getElementById('editor-bulk-paste');
+}
+
+function restoreBulkWorkflowUi() {
+    const orig = document.getElementById('editor-bulk-paste');
+    const req = document.getElementById('editor-bulk-change-request');
+    const upd = document.getElementById('editor-bulk-updated');
+    if (orig && orig.value !== (newsletterContent.bulkOriginalText || '')) {
+        orig.value = newsletterContent.bulkOriginalText || '';
+    }
+    if (req && req.value !== (newsletterContent.bulkChangeRequest || '')) {
+        req.value = newsletterContent.bulkChangeRequest || '';
+    }
+    if (upd && upd.value !== (newsletterContent.bulkUpdatedText || '')) {
+        upd.value = newsletterContent.bulkUpdatedText || '';
+    }
+    switchBulkWorkflowTab(getBulkWorkflowTab(), { skipPersist: true });
+}
+
+function switchBulkWorkflowTab(tab, { skipPersist = false } = {}) {
+    const next = (tab === 'changes' || tab === 'updated') ? tab : 'original';
+    if (!skipPersist) persistBulkWorkflowFields();
+    newsletterContent.bulkWorkflowTab = next;
+
+    document.querySelectorAll('.bulk-tab-btn').forEach((btn) => {
+        btn.classList.toggle('active', btn.getAttribute('data-bulk-tab') === next);
+    });
+
+    const panes = {
+        original: document.getElementById('bulk-pane-original'),
+        changes: document.getElementById('bulk-pane-changes'),
+        updated: document.getElementById('bulk-pane-updated'),
+    };
+    Object.entries(panes).forEach(([key, el]) => {
+        if (!el) return;
+        if (key === next) showWithClass(el, 'block');
+        else hideWithClass(el);
+    });
+
+    const help = document.getElementById('bulk-workflow-help');
+    if (help) {
+        help.textContent = next === 'changes'
+            ? 'Describe the edits you want. This sends the Original copy to the AI Model in the nav bar; the result appears on Updated.'
+            : next === 'updated'
+                ? 'AI-revised copy. Apply to Selected and Copy all 4 use this version while this tab is active.'
+                : 'Copy once with MED / THC / CBD / INV labels. Edit in Grammarly, paste back here, then apply to Selected Content below.';
+    }
+
+    const showOriginalActions = next !== 'changes';
+    const loadBtn = document.getElementById('bulk-btn-load');
+    const copyBtn = document.getElementById('bulk-btn-copy');
+    const applyBtn = document.getElementById('bulk-btn-apply');
+    const sendBtn = document.getElementById('bulk-btn-send');
+    if (loadBtn) {
+        if (next === 'original') showWithClass(loadBtn, 'inline-flex');
+        else hideWithClass(loadBtn);
+    }
+    if (copyBtn) {
+        if (showOriginalActions) showWithClass(copyBtn, 'inline-flex');
+        else hideWithClass(copyBtn);
+    }
+    if (applyBtn) {
+        if (showOriginalActions) showWithClass(applyBtn, 'inline-flex');
+        else hideWithClass(applyBtn);
+    }
+    if (sendBtn) {
+        if (next === 'changes') showWithClass(sendBtn, 'inline-flex');
+        else hideWithClass(sendBtn);
+    }
+    if (!skipPersist) saveState();
+}
+window.switchBulkWorkflowTab = switchBulkWorkflowTab;
+
 window.loadBulkNewsletterText = () => {
     const el = document.getElementById('editor-bulk-paste');
     if (!el) return;
     el.value = formatAllNewslettersForExport();
+    persistBulkWorkflowFields();
+    switchBulkWorkflowTab('original');
     const empty = EDITOR_NEWSLETTER_CATEGORIES.filter((c) => !getNewsletterTextForCategory(c));
     if (empty.length === 4) {
         setBulkNewsletterStatus('No text in Selected or Created Result yet.', true);
         return;
     }
+    const incomplete = incompleteExportCategories();
+    if (incomplete.length) {
+        setBulkNewsletterStatus(`Loaded, but ${incomplete.join(', ')} still says a link could not be read. Re-run Summarize All for those.`, true);
+        return;
+    }
     setBulkNewsletterStatus(empty.length ? `Loaded (${empty.join(', ')} empty).` : 'Loaded all four from Selected / Created Result.');
 };
 
+function incompleteExportCategories() {
+    return EDITOR_NEWSLETTER_CATEGORIES.filter((c) => summaryDraftLooksIncomplete(getNewsletterTextForCategory(c)));
+}
+
 window.copyAllNewsletterText = () => {
+    const tab = getBulkWorkflowTab();
+    if (tab === 'updated') {
+        const updatedEl = document.getElementById('editor-bulk-updated');
+        const text = (updatedEl && updatedEl.value.trim()) || '';
+        if (!text) {
+            setBulkNewsletterStatus('Updated is empty. Send a change request first.', true);
+            return;
+        }
+        navigator.clipboard.writeText(text).then(() => {
+            setBulkNewsletterStatus('Copied Updated copy to clipboard.');
+        }).catch((err) => {
+            console.error('Failed to copy updated newsletters:', err);
+            setBulkNewsletterStatus('Copy failed — select the Updated box and copy manually.', true);
+        });
+        return;
+    }
+
     const text = formatAllNewslettersForExport();
     const empty = EDITOR_NEWSLETTER_CATEGORIES.filter((c) => !getNewsletterTextForCategory(c));
     if (empty.length === 4) {
         setBulkNewsletterStatus('Nothing to copy yet. Generate or Select content for each category first.', true);
         return;
     }
+    const incomplete = incompleteExportCategories();
+    if (incomplete.length) {
+        setBulkNewsletterStatus(`Not copied — ${incomplete.join(', ')} still says a link could not be read. Re-run Summarize All for those.`, true);
+        return;
+    }
     const bulkEl = document.getElementById('editor-bulk-paste');
     if (bulkEl) bulkEl.value = text;
+    persistBulkWorkflowFields();
     navigator.clipboard.writeText(text).then(() => {
         setBulkNewsletterStatus(
             empty.length
@@ -2935,11 +3104,12 @@ window.copyAllNewsletterText = () => {
 };
 
 window.applyBulkNewsletterPaste = () => {
-    const el = document.getElementById('editor-bulk-paste');
+    const el = getBulkApplySourceEl();
     if (!el) return;
+    const sourceLabel = el.id === 'editor-bulk-updated' ? 'Updated' : 'Original';
     const { result: parsed, found, matched } = parseAllNewslettersImport(el.value);
     if (found === 0) {
-        setBulkNewsletterStatus('No MED/THC/CBD/INV sections found. Use lines like: --- MED ---', true);
+        setBulkNewsletterStatus(`No MED/THC/CBD/INV sections found in ${sourceLabel}. Use lines like: --- MED ---`, true);
         return;
     }
     const selected = getSelectedCategoryResults();
@@ -2948,9 +3118,68 @@ window.applyBulkNewsletterPaste = () => {
         selected[cat] = parsed[cat];
         updated.push(cat);
     });
+    persistBulkWorkflowFields();
     saveState();
     renderEditorContent();
-    setBulkNewsletterStatus(`Applied to Selected Content: ${updated.join(', ')}.`);
+    setBulkNewsletterStatus(`Applied ${sourceLabel} to Selected Content: ${updated.join(', ')}.`);
+};
+
+window.requestBulkNewsletterChanges = async () => {
+    persistBulkWorkflowFields();
+    const origEl = document.getElementById('editor-bulk-paste');
+    const reqEl = document.getElementById('editor-bulk-change-request');
+    const updEl = document.getElementById('editor-bulk-updated');
+    const sendText = document.getElementById('bulk-send-btn-text');
+    const sendBtn = document.getElementById('bulk-btn-send');
+
+    let originalText = origEl ? origEl.value.trim() : (newsletterContent.bulkOriginalText || '').trim();
+    if (!originalText) {
+        originalText = formatAllNewslettersForExport().trim();
+        if (origEl) origEl.value = originalText;
+        persistBulkWorkflowFields();
+    }
+    if (!originalText) {
+        setBulkNewsletterStatus('Original is empty. Load from Selected first.', true);
+        return;
+    }
+    const changeRequest = reqEl ? reqEl.value.trim() : (newsletterContent.bulkChangeRequest || '').trim();
+    if (!changeRequest) {
+        setBulkNewsletterStatus('Enter a change request first.', true);
+        return;
+    }
+
+    if (sendText) sendText.textContent = 'Sending...';
+    if (sendBtn) sendBtn.disabled = true;
+    setBulkNewsletterStatus('Sending Original copy to the AI Model...');
+
+    try {
+        const res = await fetch('/api/articles/rewrite-newsletters', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                content: originalText,
+                changeRequest,
+                model: document.getElementById('ai-model') ? document.getElementById('ai-model').value : '',
+            }),
+        });
+        const data = await parseJsonResponse(res, 'Failed to rewrite newsletters.');
+        if (!data.success) {
+            showAiFailureAlert('Newsletter rewrite failed', data);
+            setBulkNewsletterStatus(extractApiErrorMessage(data) || 'Rewrite failed.', true);
+            return;
+        }
+        if (updEl) updEl.value = data.resultText || '';
+        newsletterContent.bulkUpdatedText = data.resultText || '';
+        switchBulkWorkflowTab('updated');
+        setBulkNewsletterStatus('Updated copy is ready. Apply to Selected uses this version.');
+    } catch (e) {
+        console.error('Bulk newsletter rewrite error:', e);
+        showAiFailureAlert('Newsletter rewrite failed', e.message || 'Unknown error');
+        setBulkNewsletterStatus(e.message || 'Rewrite failed.', true);
+    } finally {
+        if (sendText) sendText.textContent = 'Send to AI';
+        if (sendBtn) sendBtn.disabled = false;
+    }
 };
 
 window.switchEditorTab = (category) => {
@@ -2977,7 +3206,6 @@ window.renderEditorContent = () => {
     const articlesTextValue = content.summaryArticlesText;
 
     const summaryRulesValue = normalizeSummaryRules(newsletterContent.summaryRules);
-    const resultValue = content.result || '';
     const templateValue = (newsletterContent.templates && newsletterContent.templates[currentEditorTab]) || '';
     const selectedGreeting = newsletterContent.selectedGreeting || DEFAULT_GREETING;
     const greetingOptionsHtml = buildGreetingOptionsHtml(selectedGreeting);
@@ -2994,14 +3222,43 @@ window.renderEditorContent = () => {
     const selectedResults = getSelectedCategoryResults();
     const selectedSummaryHtml = ['MED', 'THC', 'CBD', 'INV'].map(cat => {
         const selectedText = selectedResults[cat] || '';
+        const createdText = ((newsletterContent[cat] && newsletterContent[cat].result) || '').trim();
+        const staleHtml = selectedText.trim() && createdText && selectedText.trim() !== createdText
+            ? `<div class="mt-1 text-[0.72rem] text-[#b45309]">Differs from the latest Created Result.
+                   <button type="button" class="underline font-semibold" onclick="selectGeneratedContent('${cat}')">Use newest</button>
+               </div>`
+            : '';
         return `<div class="p-3 border border-[#e0e0e0] rounded-lg bg-[#fafafa]">
                 <div class="font-bold">${cat}</div>
-                <textarea rows="5" class="form-control text-[0.85rem] bg-white mt-2 p-2" oninput="updateSelectedCategoryResult('${cat}', this.value)" placeholder="No selected ${cat} content yet...">${selectedText}</textarea>
+                ${staleHtml}
+                <textarea id="editor-selected-${cat}" rows="5" class="form-control text-[0.85rem] bg-white mt-2 p-2" oninput="updateSelectedCategoryResult('${cat}', this.value)" placeholder="No selected ${cat} content yet...">${escapeHtml(selectedText)}</textarea>
+            </div>`;
+    }).join('');
+    const createdResultsHtml = ['MED', 'THC', 'CBD', 'INV'].map((cat) => {
+        const text = (newsletterContent[cat] && newsletterContent[cat].result) || '';
+        const isActive = cat === currentEditorTab;
+        return `<div class="p-3 border rounded-lg ${isActive ? 'border-[#2f6e63] bg-white' : 'border-[#e0e0e0] bg-[#fafafa]'}">
+                <div class="font-bold">${cat}${isActive ? ' <span class="text-[0.7rem] font-semibold text-[#2f6e63]">(active)</span>' : ''}</div>
+                <textarea id="editor-result-${cat}" rows="6" class="form-control text-[0.85rem] bg-white mt-2 p-2" oninput="updateNewsletterContent('${cat}', 'result', this.value)" placeholder="No created ${cat} result yet...">${escapeHtml(text)}</textarea>
             </div>`;
     }).join('');
 
     container.innerHTML =
-        `<div class="form-group p-3 bg-[#f8f9fa] rounded-lg border border-[#e9ecef] mb-5">
+        `<div class="form-group mb-5 p-3 border border-[#c5cae9] rounded-lg bg-[#f8f9fc]">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                <label class="font-bold">Created Result</label>
+                <div class="flex gap-2">
+                    <button class="btn btn-primary btn-sm" onclick="selectGeneratedContent('${currentEditorTab}')">Select ${currentEditorTab}</button>
+                    <button class="btn btn-outline btn-sm" onclick="copyEditorContent('${currentEditorTab}')">Copy ${currentEditorTab} Content</button>
+                </div>
+            </div>
+            <p class="text-[0.8rem] text-[#555] mb-3">All four newsletters. Generate Summary fills the active tab (${currentEditorTab}).</p>
+            <div class="grid grid-cols-2 gap-3">
+                ${createdResultsHtml}
+            </div>
+        </div>
+
+        <div class="form-group p-3 bg-[#f8f9fa] rounded-lg border border-[#e9ecef] mb-5">
             <label class="font-semibold">Template for ${currentEditorTab}</label>
             <p class="text-muted text-[0.8rem] mb-2.5">HTML template for this newsletter. Use {{SUMMARY}}, {{ARTICLES_HTML}}, {{INSPIRATIONAL_IMAGE}}, {{NEWSLETTER_NAME}} as placeholders.</p>
             <div class="flex flex-wrap gap-3 items-center mb-2.5">
@@ -3079,16 +3336,6 @@ window.renderEditorContent = () => {
                 <textarea id="editor-summary-rules" rows="14" class="form-control text-[0.85rem] border-[#fbc02d] mt-1 p-2 w-full" oninput="updateSummaryRules(this.value)" placeholder="Persistent rules sent as system instructions to the AI...">${summaryRulesValue}</textarea>
                 <div class="text-[0.7rem] text-[#999] mt-1">Also auto-saved locally with your session. Click "Save to Server" to persist permanently.</div>
             </div>
-        </div>
-
-        <div class="form-group mt-2.5">
-            <label class="font-semibold">Created Result</label>
-            <textarea id="editor-result" rows="10" class="form-control text-[0.9rem] bg-[#f5f5f5] mt-2 p-2" oninput="updateNewsletterContent('${currentEditorTab}', 'result', this.value)" placeholder="The AI-generated result will appear here...">${resultValue}</textarea>
-        </div>
-
-        <div class="flex justify-end gap-2.5 mt-4">
-            <button class="btn btn-primary btn-sm" onclick="selectGeneratedContent('${currentEditorTab}')">Select ${currentEditorTab}</button>
-            <button class="btn btn-outline btn-sm" onclick="copyEditorContent('${currentEditorTab}')">Copy ${currentEditorTab} Content</button>
         </div>
 
         <div class="mt-6 pt-4.5 border-t border-[#e5e7eb]">
@@ -3188,7 +3435,7 @@ window.saveBasePrompt = async () => {
 
 window.resetBasePrompt = async () => {
     if (!confirm('Reset base prompt to the original default?')) return;
-    const defaultPrompt = `You are a professional newsletter editor. Create a newsletter-ready summary for the provided category articles only.\n\nWrite exactly 6 to 7 short lines total.\nEach line should be concise, natural, and publication-ready.\nOnly use the fetched article content and article metadata provided by the user.\nDo not use outside knowledge.\nDo not mention URLs in the output.\nFocus on the most important developments across the provided articles for the selected category.\nIf some links could not be accessed, briefly note that in one short line.`;
+    const defaultPrompt = `You are a professional newsletter editor. Create a newsletter-ready summary for the provided category articles only.\n\nWrite exactly 6 to 7 short lines total.\nEach line should be concise, natural, and publication-ready.\nOnly use the fetched article content and article metadata provided by the user.\nDo not use outside knowledge.\nDo not mention URLs in the output.\nFocus on the most important developments across the provided articles for the selected category.\nNever say a link could not be accessed. Summarize every fetched article.`;
     const el = document.getElementById('editor-base-prompt');
     if (el) el.value = defaultPrompt;
     cachedBasePrompt = defaultPrompt;
@@ -3321,8 +3568,8 @@ window.forceManualContentModal = (category) => {
         index: idx + 1
     }));
 
-    const isUseRules = document.getElementById(`rules-on-${category}`)?.checked !== false;
-    const summaryRules = document.getElementById(`rules-textarea-${category}`)?.value || '';
+    const isUseRules = getUseRulesForCategory(category);
+    const summaryRules = isUseRules ? normalizeSummaryRules(newsletterContent.summaryRules) : '';
 
     showManualContentModal(category, unreadableArticles, categoryArticles, isUseRules, summaryRules);
 };
@@ -3332,7 +3579,14 @@ window.getCachedContent = (url) => {
     return manualContentCache[url] || null;
 };
 
+function articleUrlLinkHtml(url) {
+    const href = String(url || '').trim();
+    if (!href) return '';
+    return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="text-xs text-blue-700 underline break-all">${escapeHtml(href)}</a>`;
+}
+
 window.showManualContentModal = (category, unreadableArticles, allArticles, isUseRules, summaryRules) => {
+    pruneMismatchedManualContent();
     const modal = document.createElement('div');
     modal.className = 'fixed inset-0 bg-[rgba(22,34,30,0.5)] z-[2000] flex items-center justify-center p-4 backdrop-blur-md';
     modal.id = 'manual-content-modal';
@@ -3345,18 +3599,21 @@ window.showManualContentModal = (category, unreadableArticles, allArticles, isUs
     `;
 
     unreadableArticles.forEach((article, idx) => {
-        // Find the actual article in the global state to get its manualContent
         const actualArticle = articles.find(a => a.url === article.url) || article;
-        const currentContent = actualArticle.manualContent || getCachedContent(article.url) || '';
-        const hasContent = !!currentContent;
+        const paste = manualPasteState(actualArticle);
+        const hasContent = paste.status === 'ok';
+        const mismatchNote = paste.status === 'mismatch'
+            ? '<p class="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1 mb-2">Saved text was for a different article. Paste this article here.</p>'
+            : '';
         html += `
             <div class="mb-6 pb-4 border-b border-gray-200">
                 <div class="flex items-center gap-2 mb-2">
-                    <h3 class="font-semibold text-sm">${article.index}. ${article.title}</h3>
+                    <h3 class="font-semibold text-sm">${article.index}. ${escapeHtml(article.title)}</h3>
                     ${hasContent ? '<span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Text Provided</span>' : ''}
                 </div>
-                <p class="text-xs text-gray-500 mb-2">${article.url}</p>
-                <textarea id="manual-content-${idx}" placeholder="Paste article content here..." class="w-full h-32 p-2 border border-gray-300 rounded text-sm font-mono resize-none">${currentContent}</textarea>
+                <p class="text-xs text-gray-500 mb-2">${articleUrlLinkHtml(article.url)}</p>
+                ${mismatchNote}
+                <textarea id="manual-content-${idx}" placeholder="Paste article content here..." class="w-full h-32 p-2 border border-gray-300 rounded text-sm font-mono resize-none">${escapeHtml(paste.text)}</textarea>
             </div>
         `;
     });
@@ -3398,26 +3655,15 @@ window.closeManualContentModal = () => {
 function getArticlesTextForCategory(category) {
     const content = newsletterContent[category];
     if (!content) return '';
-    if (content.summaryArticlesText === undefined) {
-        content.summaryArticlesText = buildArticlesOnlyBlock(category) || '';
-    }
-
-    const currentPicks = getArticlesByPickOrder(category);
-    if (currentPicks.length > 0 && content.summaryArticlesText.trim()) {
-        const pickUrls = new Set(currentPicks.map(a => (a.url || '').trim()).filter(Boolean));
-        const urlsInText = content.summaryArticlesText.match(/https?:\/\/[^\s]+/g) || [];
-        const hasOverlap = urlsInText.some(u => pickUrls.has(u.trim()));
-        if (!hasOverlap) {
-            console.warn(`Articles box for ${category} didn't match any current picks — rebuilding from Article View selections.`);
-            content.summaryArticlesText = buildArticlesOnlyBlock(category) || '';
-            if (currentEditorTab === category) {
-                const articlesEl = document.getElementById('editor-summary-articles');
-                if (articlesEl) articlesEl.value = content.summaryArticlesText;
-            }
-            saveState();
+    const synced = mergeArticlesOnlyBlock(category, content.summaryArticlesText) || buildArticlesOnlyBlock(category) || '';
+    if (content.summaryArticlesText !== synced) {
+        content.summaryArticlesText = synced;
+        if (currentEditorTab === category) {
+            const articlesEl = document.getElementById('editor-summary-articles');
+            if (articlesEl) articlesEl.value = synced;
         }
+        saveState();
     }
-
     return (content.summaryArticlesText || '').trim();
 }
 
@@ -3428,15 +3674,82 @@ function getUseRulesForCategory(category) {
 
 // Builds the manualContent map (index -> text) from whatever content each
 // article already has saved (article.manualContent or the local cache).
+function contentMatchesArticleTitle(title, content) {
+    const titleWords = String(title || '')
+        .toLowerCase()
+        .split(/\s+/)
+        .map((w) => w.replace(/[^a-z0-9]/g, ''))
+        .filter((w) => w.length > 4);
+    if (titleWords.length === 0) return true;
+    const lower = String(content || '').toLowerCase();
+    const hits = titleWords.filter((w) => lower.includes(w)).length;
+    return hits >= Math.min(2, titleWords.length);
+}
+
+function getStoredManualText(article) {
+    return String((article && article.manualContent) || getCachedContent(article && article.url) || '').trim();
+}
+
+// Pasted text is stored on the article object. An earlier index-based save put
+// the burning-mouth article onto the SFGate row. Move matching text onto the
+// right article and drop text that does not belong.
+function pruneMismatchedManualContent() {
+    (articles || []).forEach((article) => {
+        const text = String(article.manualContent || '').trim();
+        if (!text) return;
+        if (contentMatchesArticleTitle(article.title, text)) return;
+        const owner = (articles || []).find((other) => (
+            other !== article && contentMatchesArticleTitle(other.title, text)
+        ));
+        if (owner && !String(owner.manualContent || '').trim()) {
+            owner.manualContent = text;
+        }
+        delete article.manualContent;
+        if (article.url && getCachedContent(article.url) === text) {
+            try {
+                delete manualContentCache[article.url];
+                localStorage.setItem('manual_article_content_cache', JSON.stringify(manualContentCache));
+            } catch (_) { /* ignore cache write errors */ }
+        }
+    });
+}
+
+function manualPasteState(article) {
+    const text = getStoredManualText(article);
+    if (!text) return { text: '', status: 'empty' };
+    if (contentMatchesArticleTitle(article.title, text)) {
+        return { text, status: 'ok' };
+    }
+    return { text: '', status: 'mismatch' };
+}
+
+function summaryDraftLooksIncomplete(text) {
+    const t = String(text || '').toLowerCase();
+    return /could not be accessed|couldn't be accessed|could not access|wouldn't load|would not load|did not load|could not summarize|couldn't summarize|send me the text|run (this|it) again|link did not load/.test(t);
+}
+
+function unreadablePicksForModal(categoryArticles) {
+    return (categoryArticles || [])
+        .map((article, idx) => ({
+            ...article,
+            index: idx + 1,
+            title: article.title || '',
+            url: article.url || '',
+            date: article.date || '',
+        }))
+        .filter((article) => {
+            const text = getStoredManualText(article);
+            return !text || !contentMatchesArticleTitle(article.title, text);
+        });
+}
+
 function buildManualContentMap(categoryArticles) {
     const manualContent = {};
     categoryArticles.forEach((article, index) => {
-        if (article.manualContent) {
-            manualContent[index] = article.manualContent;
-        } else {
-            const cached = getCachedContent(article.url);
-            if (cached) manualContent[index] = cached;
-        }
+        const text = getStoredManualText(article);
+        if (!text || !contentMatchesArticleTitle(article.title, text)) return;
+        manualContent[index] = text;
+        if (article.url) manualContent[article.url] = text;
     });
     return manualContent;
 }
@@ -3444,7 +3757,7 @@ function buildManualContentMap(categoryArticles) {
 // Single shared network call used by both the per-category "Generate Summary"
 // button and the "Summarize All" flow, so manual-content handling can't drift
 // between the two paths.
-async function requestCategorySummary(category, categoryArticles, articlesText, isUseRules, summaryRules, confirmed = false) {
+async function requestCategorySummary(category, categoryArticles, articlesText, isUseRules, summaryRules, confirmed = false, checkOnly = false) {
     const manualContent = buildManualContentMap(categoryArticles);
     const res = await fetch('/api/articles/summarize', {
         method: 'POST',
@@ -3457,6 +3770,7 @@ async function requestCategorySummary(category, categoryArticles, articlesText, 
             articles: categoryArticles,
             manualContent,
             confirmed,
+            checkOnly,
             model: document.getElementById('ai-model') ? document.getElementById('ai-model').value : '',
         }),
         timeout: 60000,
@@ -3464,13 +3778,40 @@ async function requestCategorySummary(category, categoryArticles, articlesText, 
     return res.json();
 }
 
+function getCreatedResultEl(category) {
+    return document.getElementById(`editor-result-${category}`) || document.getElementById('editor-result');
+}
+
 function applyGeneratedResult(category, resultText) {
-    newsletterContent[category].result = resultText || '';
-    saveState();
-    if (currentEditorTab === category) {
-        const resultEl = document.getElementById('editor-result');
-        if (resultEl) resultEl.value = resultText || '';
+    const previous = (newsletterContent[category].result || '').trim();
+    const next = resultText || '';
+    newsletterContent[category].result = next;
+
+    // Selected Content is what "Copy all 4" exports. Carry a fresh generation
+    // through when Selected was never hand-edited (empty, same as the previous
+    // generation, or still carrying a "link wouldn't load" draft), so the export
+    // can't silently ship the older copy. Real Grammarly edits are left alone.
+    const selected = getSelectedCategoryResults();
+    const current = (selected[category] || '').trim();
+    if (!current || current === previous || summaryDraftLooksIncomplete(current)) {
+        selected[category] = next;
+        refreshBulkOriginalFromSelected();
     }
+
+    saveState();
+    const resultEl = getCreatedResultEl(category);
+    if (resultEl) resultEl.value = next;
+    const selectedEl = document.getElementById(`editor-selected-${category}`);
+    if (selectedEl) selectedEl.value = selected[category] || '';
+}
+
+// Keeps the "All four newsletters" Original box in step with Selected Content
+// after a regeneration, so the box the admin copies isn't a stale snapshot.
+function refreshBulkOriginalFromSelected() {
+    const text = formatAllNewslettersForExport();
+    newsletterContent.bulkOriginalText = text;
+    const orig = document.getElementById('editor-bulk-paste');
+    if (orig) orig.value = text;
 }
 
 window.submitManualContent = async () => {
@@ -3500,13 +3841,12 @@ window.submitManualContent = async () => {
     saveState(); // Persist to newsletters.json
     closeManualContentModal();
 
-    // Re-run generation now that manual content is saved on the articles, and mark
-    // this pass as confirmed so the server uses what's provided (even if left as the
-    // pre-filled cached text) instead of asking again in a loop.
+    // Re-run generation now that manual content is saved on the articles.
     await generateSummary(category, true);
 };
 
 window.generateSummary = async (category, confirmed = false) => {
+    pruneMismatchedManualContent();
     const articlesText = getArticlesTextForCategory(category);
     const isUseRules = getUseRulesForCategory(category);
     const summaryRules = isUseRules ? normalizeSummaryRules(newsletterContent.summaryRules) : '';
@@ -3523,6 +3863,12 @@ window.generateSummary = async (category, confirmed = false) => {
 
         if (data.success) {
             applyGeneratedResult(category, data.resultText);
+            if (summaryDraftLooksIncomplete(data.resultText)) {
+                const missing = unreadablePicksForModal(categoryArticles);
+                if (missing.length) {
+                    showManualContentModal(category, missing, categoryArticles, isUseRules, summaryRules);
+                }
+            }
         } else if (data.needsManualContent && data.unreadableArticles) {
             // Show modal for unreadable articles
             showManualContentModal(category, data.unreadableArticles, categoryArticles, isUseRules, summaryRules);
@@ -3543,11 +3889,11 @@ window.generateSummary = async (category, confirmed = false) => {
 // modal so the admin is asked once for everything that's missing, instead of
 // being interrupted category-by-category.
 async function runSummarizeAllPass(categories, confirmed = false) {
+    pruneMismatchedManualContent();
     const btnText = document.getElementById('summarize-all-btn-text');
-    if (btnText) btnText.textContent = 'Summarizing All...';
+    if (btnText) btnText.textContent = 'Checking articles...';
 
     const pending = [];
-    const succeeded = [];
     const skipped = [];
 
     try {
@@ -3564,16 +3910,53 @@ async function runSummarizeAllPass(categories, confirmed = false) {
 
             let data;
             try {
-                data = await requestCategorySummary(category, categoryArticles, articlesText, isUseRules, summaryRules, confirmed);
+                data = await requestCategorySummary(category, categoryArticles, articlesText, isUseRules, summaryRules, confirmed, true);
+            } catch (e) {
+                console.error(`Summarize All check error for ${category}:`, e);
+                skipped.push(`${category} (${e.message || 'request failed'})`);
+                continue;
+            }
+
+            if (data.needsManualContent && data.unreadableArticles) {
+                pending.push({ category, unreadableArticles: data.unreadableArticles, categoryArticles, isUseRules, summaryRules });
+            } else if (!data.success) {
+                skipped.push(`${category} (${data.error || 'unknown error'})`);
+            }
+        }
+
+        if (pending.length > 0) {
+            showMultiCategoryManualContentModal(pending, categories);
+            return;
+        }
+
+        if (btnText) btnText.textContent = 'Summarizing All...';
+        const succeeded = [];
+        for (const category of categories) {
+            if (skipped.includes(category) || skipped.some((s) => String(s).startsWith(`${category} (`))) continue;
+            const articlesText = getArticlesTextForCategory(category);
+            const isUseRules = getUseRulesForCategory(category);
+            const summaryRules = isUseRules ? normalizeSummaryRules(newsletterContent.summaryRules) : '';
+            const categoryArticles = getSummaryArticlesForCategory(category);
+            if (!articlesText || categoryArticles.length === 0) continue;
+
+            let data;
+            try {
+                data = await requestCategorySummary(category, categoryArticles, articlesText, isUseRules, summaryRules, confirmed, false);
             } catch (e) {
                 console.error(`Summarize All error for ${category}:`, e);
                 skipped.push(`${category} (${e.message || 'request failed'})`);
                 continue;
             }
 
-            if (data.success) {
+            if (data.success && data.resultText) {
                 applyGeneratedResult(category, data.resultText);
                 succeeded.push(category);
+                if (summaryDraftLooksIncomplete(data.resultText)) {
+                    const missing = unreadablePicksForModal(categoryArticles);
+                    if (missing.length) {
+                        pending.push({ category, unreadableArticles: missing, categoryArticles, isUseRules, summaryRules });
+                    }
+                }
             } else if (data.needsManualContent && data.unreadableArticles) {
                 pending.push({ category, unreadableArticles: data.unreadableArticles, categoryArticles, isUseRules, summaryRules });
             } else {
@@ -3582,7 +3965,7 @@ async function runSummarizeAllPass(categories, confirmed = false) {
         }
 
         if (pending.length > 0) {
-            showMultiCategoryManualContentModal(pending);
+            showMultiCategoryManualContentModal(pending, categories);
             return;
         }
 
@@ -3599,7 +3982,8 @@ window.summarizeAll = async () => {
     await runSummarizeAllPass(['MED', 'THC', 'CBD', 'INV']);
 };
 
-window.showMultiCategoryManualContentModal = (pending) => {
+window.showMultiCategoryManualContentModal = (pending, generateCategories) => {
+    pruneMismatchedManualContent();
     const modal = document.createElement('div');
     modal.className = 'fixed inset-0 bg-[rgba(22,34,30,0.5)] z-[2000] flex items-center justify-center p-4 backdrop-blur-md';
     modal.id = 'multi-manual-content-modal';
@@ -3617,16 +4001,20 @@ window.showMultiCategoryManualContentModal = (pending) => {
         html += `<h3 class="font-bold text-sm mt-5 mb-2 text-[#333]">${entry.category}</h3>`;
         entry.unreadableArticles.forEach((article, idx) => {
             const actualArticle = articles.find(a => a.url === article.url) || article;
-            const currentContent = actualArticle.manualContent || getCachedContent(article.url) || '';
-            const hasContent = !!currentContent;
+            const paste = manualPasteState(actualArticle);
+            const hasContent = paste.status === 'ok';
+            const mismatchNote = paste.status === 'mismatch'
+                ? '<p class="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1 mb-2">Saved text was for a different article. Paste this article here.</p>'
+                : '';
             html += `
                 <div class="mb-6 pb-4 border-b border-gray-200">
                     <div class="flex items-center gap-2 mb-2">
-                        <h4 class="font-semibold text-sm">${article.index}. ${article.title}</h4>
+                        <h4 class="font-semibold text-sm">${article.index}. ${escapeHtml(article.title)}</h4>
                         ${hasContent ? '<span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Text Provided</span>' : ''}
                     </div>
-                    <p class="text-xs text-gray-500 mb-2">${article.url}</p>
-                    <textarea id="manual-content-multi-${catIdx}-${idx}" placeholder="Paste article content here..." class="w-full h-32 p-2 border border-gray-300 rounded text-sm font-mono resize-none">${currentContent}</textarea>
+                    <p class="text-xs text-gray-500 mb-2">${articleUrlLinkHtml(article.url)}</p>
+                    ${mismatchNote}
+                    <textarea id="manual-content-multi-${catIdx}-${idx}" placeholder="Paste article content here..." class="w-full h-32 p-2 border border-gray-300 rounded text-sm font-mono resize-none">${escapeHtml(paste.text)}</textarea>
                 </div>
             `;
         });
@@ -3640,7 +4028,10 @@ window.showMultiCategoryManualContentModal = (pending) => {
     `;
 
     modal.innerHTML = html;
-    currentMultiManualContentState = { pending };
+    currentMultiManualContentState = {
+        pending,
+        generateCategories: generateCategories || pending.map((p) => p.category),
+    };
     document.body.appendChild(modal);
 };
 
@@ -3657,7 +4048,7 @@ window.submitMultiManualContent = async () => {
         alert('Modal state lost. Please try again.');
         return;
     }
-    const { pending } = currentMultiManualContentState;
+    const { pending, generateCategories } = currentMultiManualContentState;
 
     pending.forEach((entry, catIdx) => {
         entry.unreadableArticles.forEach((article, idx) => {
@@ -3676,10 +4067,10 @@ window.submitMultiManualContent = async () => {
     if (modal) modal.remove();
     currentMultiManualContentState = null;
 
-    // Retry only the categories that were still missing content; anything that
-    // already succeeded on the first pass is left as-is. Mark confirmed so the
-    // server uses what's provided instead of asking again in a loop.
-    await runSummarizeAllPass(pending.map(p => p.category), true);
+    const retryCats = (generateCategories && generateCategories.length)
+        ? generateCategories
+        : pending.map((p) => p.category);
+    await runSummarizeAllPass(retryCats, true);
 };
 
 window.updateSummary = (category, index, field, value) => {
@@ -3766,7 +4157,7 @@ window.removeCustomGreetingEnding = (value) => {
 };
 
 window.selectGeneratedContent = (category) => {
-    const resultEl = document.getElementById('editor-result');
+    const resultEl = getCreatedResultEl(category);
     const generatedText = resultEl ? resultEl.value.trim() : ((newsletterContent[category] && newsletterContent[category].result) || '').trim();
 
     if (!generatedText) {
@@ -3799,6 +4190,7 @@ window.copyEditorContent = (category) => {
 };
 
 function renderEditorView() {
+    restoreBulkWorkflowUi();
     switchEditorTab(currentEditorTab);
 }
 
@@ -4036,10 +4428,27 @@ function setArticleImageSrcWithFallback(imgEl, article, url) {
     imgEl.removeAttribute('onerror');
 }
 
+// archive.today mirrors under several TLDs — all the same site, none of them reveal
+// the real periodical in the hostname the way a normal news URL does.
+const ARCHIVE_HOSTNAMES = ['archive.is', 'archive.ph', 'archive.today', 'archive.li', 'archive.vn', 'archive.fo', 'archive.md'];
+function isArchiveUrl(url) {
+    if (!url) return false;
+    try {
+        const hostname = new URL(url).hostname.replace(/^www\./i, '');
+        return ARCHIVE_HOSTNAMES.includes(hostname);
+    } catch (e) {
+        return false;
+    }
+}
+
+// Regex twin of isArchiveUrl used by unwrapArchivedArticleUrl to detect snapshot hosts.
 function isArchiveSnapshotHost(hostname) {
     return /^archive\.(is|ph|today|li|md|vn|fo)$/i.test(String(hostname || '').replace(/^www\./i, ''));
 }
 
+// Tries to recover the original publisher URL embedded in an archive.is snapshot
+// link (query ?url= or the URL embedded in the path). Returns the input unchanged
+// when the snapshot doesn't expose the original.
 function unwrapArchivedArticleUrl(url) {
     if (!url) return url;
     try {
@@ -4069,15 +4478,52 @@ function unwrapArchivedArticleUrl(url) {
     }
 }
 
-function getSourceLabel(url) {
-    if (!url) return 'More at purablis.com...';
+function hostnameFromUrl(url) {
     try {
-        const hostname = new URL(unwrapArchivedArticleUrl(url)).hostname.replace(/^www\./i, '');
-        return `More at ${hostname}...`;
+        return new URL(url).hostname.replace(/^www\./i, '');
     } catch (e) {
-        return 'More at source...';
+        return '';
     }
 }
+
+function getSourceLabel(articleOrUrl) {
+    const isArticleObj = articleOrUrl && typeof articleOrUrl === 'object';
+    const url = isArticleObj ? (articleOrUrl.url || '') : (articleOrUrl || '');
+    const originalSourceUrl = isArticleObj ? (articleOrUrl.originalSourceUrl || '') : '';
+    // The original (non-archived) URL, when we have one, always beats the archive.is
+    // hostname — that's the whole point of asking for it.
+    const originalHostname = originalSourceUrl ? hostnameFromUrl(originalSourceUrl) : '';
+    if (originalHostname) return `More at ${originalHostname}...`;
+    if (!url) return 'More at purablis.com...';
+    // For archive.is snapshots with no stored originalSourceUrl, try to auto-recover
+    // the publisher URL embedded in the snapshot link before falling back to the host.
+    const resolvedUrl = isArchiveUrl(url) ? unwrapArchivedArticleUrl(url) : url;
+    const hostname = hostnameFromUrl(resolvedUrl);
+    return hostname ? `More at ${hostname}...` : 'More at source...';
+}
+
+// archive.is can't be scraped (no-scrape protection — confirmed it blocks even direct
+// fetch tools), so there's no way to auto-resolve the real publisher URL. Opens the
+// archive link so the user can read it, then asks them to paste the original article
+// URL, which getSourceLabel uses to derive the real hostname for "More at ...".
+window.promptArchiveOriginalUrl = (index) => {
+    const article = articles[index];
+    if (!article) return;
+    window.open(article.url, '_blank', 'noopener');
+    const value = window.prompt(
+        'This is an archive.is link — paste the ORIGINAL article URL (the publisher\'s own link) so we can show the real source in "More at...":',
+        article.originalSourceUrl || '',
+    );
+    if (value === null) return;
+    const trimmed = value.trim();
+    if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+        alert('That doesn\'t look like a URL (must start with http:// or https://). Not saved.');
+        return;
+    }
+    articles[index].originalSourceUrl = trimmed;
+    saveState();
+    renderArticles();
+};
 
 function getInspirationalNewsletterUrl(itemOrUrl) {
     return getInspirationalDisplayUrl(itemOrUrl);
@@ -4125,7 +4571,7 @@ function buildFallbackConfirmationHtml(category) {
     const weeklyHtml = getMainArticlesForCategory(category).map(article => {
         const title = escapeHtml(article.title || 'Untitled');
         const url = article.url || '#';
-        const source = escapeHtml(getSourceLabel(article.url || ''));
+        const source = escapeHtml(getSourceLabel(article));
         const image = getArticleImageUrl(article);
         const imgTag = image && article.publishImage !== false
             ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(article.title || '')}" width="60" style="display:block;border:0;max-width:60px;width:60px;height:auto;object-fit:cover;border-radius:6px;">`
@@ -4230,7 +4676,7 @@ function buildArticleTableHtml(sampleHtml, article) {
     const url = article.url || '#';
     const title = article.title || 'Untitled';
     const image = getArticleImageUrl(article);
-    const sourceLabel = getSourceLabel(article.url || '');
+    const sourceLabel = getSourceLabel(article);
 
     Array.from(table.querySelectorAll('a')).forEach(link => {
         link.href = url;
@@ -5114,21 +5560,8 @@ function updateChosenFileName(inputId, labelId) {
 
 function assignImportedArticles(importedArticles) {
     const importedAt = new Date().toISOString();
-    
-    // Normalize URL helper
-    const normalizeUrl = u => String(u || '').trim().toLowerCase().replace(/\/$/, '');
-    
-    // Create a set of existing normalized URLs to avoid duplicates
-    const existingUrls = new Set((articles || []).map(a => normalizeUrl(a.url)));
-    
-    // Filter out incoming articles that already exist
-    const newArticles = (importedArticles || []).filter(a => {
-        if (!a.url) return false;
-        const norm = normalizeUrl(a.url);
-        if (existingUrls.has(norm)) return false;
-        existingUrls.add(norm); // Prevent duplicates within the incoming sheet too
-        return true;
-    });
+    const withUrl = (importedArticles || []).filter((a) => a.url);
+    const { articles: newArticles } = filterDuplicateArticlesClient(withUrl, articles || []);
     
     // Map new articles with addedAt
     const mappedNew = newArticles.map(article => ({
@@ -5420,9 +5853,15 @@ function renderArticles() {
                         </button>
                     </div>
 
-                    <p class="article-summary" title="${escapeHtml(article.description || '')}">
-                        ${article.description ? escapeHtml(article.description.substring(0, 600)) : 'No description'}
-                    </p>
+                    <div class="article-summary-cell">
+                        <p class="article-summary" title="${escapeHtml(article.description || '')}">
+                            ${article.description ? escapeHtml(article.description.substring(0, 600)) : 'No description'}
+                        </p>
+                        ${article.summary ? `<details class="mt-1 text-[0.85rem]">
+                            <summary class="cursor-pointer text-[#1976d2]">Article summary (from real page text)</summary>
+                            <p class="mt-1 text-[#444]">${escapeHtml(article.summary)}</p>
+                        </details>` : ''}
+                    </div>
 
                     <div class="col-span-full flex items-start gap-1.25 mt-2 border-t border-dashed border-[#e2e8f0] pt-2">
                         <span class="text-[0.7rem] font-bold text-[#64748b] pt-1">URL:</span>
@@ -5431,6 +5870,13 @@ function renderArticles() {
                             rows="2"
                             onchange="updateArticleField(${index}, 'url', this.value)">${article.url}</textarea>
                         <a href="${article.url}" target="_blank" title="Open Link" class="no-underline mt-1">🔗</a>
+                        ${isArchiveUrl(article.url) ? `<button
+                            type="button"
+                            onclick="promptArchiveOriginalUrl(${index})"
+                            class="no-underline mt-1 bg-transparent border-0 cursor-pointer p-0"
+                            title="${article.originalSourceUrl ? `Original source: ${escapeHtml(article.originalSourceUrl)} — click to change` : 'Archive.is link — click to add the original article URL for "More at..."'}">
+                            ${article.originalSourceUrl ? '🌐' : '❓🌐'}
+                        </button>` : ''}
                     </div>
                 </div>`;
             }).join('');
@@ -5762,24 +6208,22 @@ function isPrioritySummaryRank(rank) {
 function getSummaryArticlesForCategory(category) {
     const eligible = getArticlesForCategory(category);
     const orderKeys = parseCategoryPickOrder(category);
-
-    // Only return articles specified in pick order, not all eligible articles
-    if (orderKeys.length === 0) return eligible.slice(0, 3); // Default to first 3 if no pick order
-
+    const limit = 3;
     const result = [];
     const used = new Set();
-    orderKeys.forEach((key) => {
-        const keyNorm = key.toUpperCase();
-        const match = eligible.find((a) => {
-            const r = String(getRankForSort(a, category)).trim().toUpperCase();
-            return r === keyNorm;
-        });
-        if (!match) return;
-        const id = match.url || match.title || String(match.id);
+    const add = (article) => {
+        if (!article || result.length >= limit) return;
+        const id = article.url || article.title || String(article.id);
         if (used.has(id)) return;
         used.add(id);
-        result.push(match);
+        result.push(article);
+    };
+
+    orderKeys.forEach((key) => {
+        const keyNorm = key.toUpperCase();
+        add(eligible.find((a) => String(getRankForSort(a, category)).trim().toUpperCase() === keyNorm));
     });
+    eligible.forEach((article) => add(article));
     return result;
 }
 
@@ -6364,7 +6808,7 @@ window.executeStep2Query = async () => {
     }
 };
 
-// --- SEARCH MORE ARTICLES (deduplicates by URL) ---
+// --- SEARCH MORE ARTICLES (deduplicates by URL and title) ---
 
 async function searchMoreArticles() {
     const prompt = document.getElementById('step2-query').value.trim();
@@ -6377,6 +6821,7 @@ async function searchMoreArticles() {
     const btn = document.getElementById('btn-step2-query');
     const status = document.getElementById('step2-query-status');
     const model = document.getElementById('ai-model').value;
+    const searchEngine = getArticleSearchEngine();
     const newsletterName = document.getElementById('newsletter-name').value;
 
     btn.disabled = true;
@@ -6388,7 +6833,7 @@ async function searchMoreArticles() {
         const response = await fetch('/api/articles/search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt, newsletterName, model, existingUrls }),
+            body: JSON.stringify({ prompt, newsletterName, model, existingUrls, searchEngine }),
         });
 
         const data = await parseJsonResponse(
@@ -6397,8 +6842,11 @@ async function searchMoreArticles() {
         );
 
         if (data.success && data.articles) {
-            const existingUrlSet = new Set(articles.map(a => normalizeUrl(a.url)));
-            let newArticles = data.articles.filter(a => !existingUrlSet.has(normalizeUrl(a.url)));
+            const workspaceBefore = articles;
+            const { articles: newArticles, skipped: dupeCount } = filterDuplicateArticlesClient(
+                data.articles,
+                workspaceBefore,
+            );
 
             // Assign IDs continuing from current max; mark when added
             const maxId = articles.reduce((max, a) => Math.max(max, a.id || 0), 0);
@@ -6414,16 +6862,17 @@ async function searchMoreArticles() {
             saveState();
             renderArticles();
 
-            const dupeCount = data.articles.length - newArticles.length;
+            const dupeCountTotal = (data.duplicateCount || 0) + dupeCount;
             let msg = `Added ${newArticles.length} new articles.`;
-            if (dupeCount > 0) msg += ` (${dupeCount} duplicates skipped)`;
+            if (dupeCountTotal > 0) msg += ` (${dupeCountTotal} duplicates skipped)`;
 
             if (data.stage === 'raw' && newArticles.length > 0) {
                 msg += ' Verifying & categorizing...';
                 status.textContent = msg;
                 showWithClass(status, 'block');
                 try {
-                    const verified = await verifyArticlesRemote(newArticles);
+                    const verifyResult = await verifyArticlesRemote(newArticles, workspaceBefore);
+                    const verified = verifyResult.articles;
                     const verifiedByUrl = {};
                     verified.forEach(a => { verifiedByUrl[normalizeUrl(a.url)] = a; });
                     articles = articles.map(a => {
@@ -6436,7 +6885,11 @@ async function searchMoreArticles() {
                     });
                     saveState();
                     renderArticles();
-                    status.textContent = `Added and verified ${verified.length} new articles.` + (dupeCount > 0 ? ` (${dupeCount} duplicates skipped)` : '') + verifyReportSuffix();
+                    status.textContent = `Added ${verified.length} new articles.`
+                        + (dupeCountTotal > 0 ? ` (${dupeCountTotal} duplicates skipped)` : '')
+                        + (verifyResult.rejectedCount ? ` ${verifyResult.rejectedCount} rejected.` : '')
+                        + (verifyResult.duplicateCount ? ` ${verifyResult.duplicateCount} title dupes removed after verify.` : '')
+                        + verifyReportSuffix();
                 } catch (verifyErr) {
                     console.error("Verification error (raw articles were kept):", verifyErr);
                     status.textContent = `Added ${newArticles.length} new articles, but verification/categorization failed or timed out — kept them unverified.`;
@@ -6962,7 +7415,9 @@ window.sweepPrioritySources = async function () {
         const verifiable = fresh.filter((a) => !a.isRedirectLink);
         if (verifiable.length) {
             try {
-                const verified = await verifyArticlesRemote(verifiable);
+                // Pass the pre-existing list so verify can also drop title-level dupes.
+                const verifyResult = await verifyArticlesRemote(verifiable, articles.filter((a) => a.addedAt !== addedAt));
+                const verified = verifyResult.articles || [];
 
                 // Verification can rewrite a URL (redirect resolution), so title is
                 // carried as a second key — otherwise a rewritten article looks like
@@ -7021,6 +7476,39 @@ function renderPrioritySweepReport(data) {
     showWithClass(box, 'block');
 }
 
+function normalizeArticleTitle(title) {
+    return String(title || '')
+        .toLowerCase()
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[''`´]/g, "'")
+        .replace(/[""]/g, '')
+        .replace(/[^\w\s']/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function filterDuplicateArticlesClient(incoming, existingArticles = []) {
+    const urlSet = new Set((existingArticles || []).map((a) => normalizeUrl(a.url)).filter(Boolean));
+    const titleSet = new Set(
+        (existingArticles || [])
+            .map((a) => normalizeArticleTitle(a.title))
+            .filter((t) => t.length >= 12),
+    );
+    const articles = [];
+    let skipped = 0;
+    for (const article of incoming || []) {
+        const urlKey = normalizeUrl(article.url);
+        const titleKey = normalizeArticleTitle(article.title);
+        if (urlKey && urlSet.has(urlKey)) { skipped += 1; continue; }
+        if (titleKey.length >= 12 && titleSet.has(titleKey)) { skipped += 1; continue; }
+        if (urlKey) urlSet.add(urlKey);
+        if (titleKey.length >= 12) titleSet.add(titleKey);
+        articles.push(article);
+    }
+    return { articles, skipped };
+}
+
 // Stage 2 (URL verification + categorization) is a separate, slower request from
 // the AI search itself, so a timeout there never throws away search results the
 // user already paid Claude credits for. Callers should already have the raw
@@ -7039,12 +7527,17 @@ function currentDateWindow() {
 
 let lastVerifyReport = null;
 
-async function verifyArticlesRemote(rawArticles) {
+async function verifyArticlesRemote(rawArticles, existingArticles = []) {
     const { since, until } = currentDateWindow();
     const response = await fetch('/api/articles/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ articles: rawArticles, since, until }),
+        body: JSON.stringify({
+            articles: rawArticles,
+            existingArticles: Array.isArray(existingArticles) ? existingArticles : [],
+            since,
+            until,
+        }),
     });
     const data = await parseJsonResponse(
         response,
@@ -7055,10 +7548,24 @@ async function verifyArticlesRemote(rawArticles) {
     }
     lastVerifyReport = {
         corrected: data.datesCorrected || [],
-        dropped: data.droppedOutOfWindow || [],
+        rejected: Array.isArray(data.rejected) ? data.rejected : [],
         window: `${since || 'any'} to ${until || 'today'}`,
     };
-    return data.articles;
+    return {
+        articles: data.articles,
+        rejectedCount: data.rejectedCount || 0,
+        duplicateCount: data.duplicateCount || 0,
+        rejected: Array.isArray(data.rejected) ? data.rejected : [],
+    };
+}
+
+function formatVerifyStatusMessage(keptCount, rejectedCount, duplicateCount = 0) {
+    const parts = [`Verified ${keptCount} articles`];
+    const extras = [];
+    if (rejectedCount) extras.push(`${rejectedCount} rejected`);
+    if (duplicateCount) extras.push(`${duplicateCount} duplicate${duplicateCount === 1 ? '' : 's'} removed`);
+    if (extras.length) parts.push(`(${extras.join(', ')})`);
+    return `${parts[0]}${parts[1] ? ` ${parts[1]}` : ''}.`;
 }
 
 /** Short sentence describing any date corrections/drops from the last verify pass. */
@@ -7066,7 +7573,8 @@ function verifyReportSuffix() {
     if (!lastVerifyReport) return '';
     const parts = [];
     if (lastVerifyReport.corrected.length) parts.push(`corrected ${lastVerifyReport.corrected.length} wrong date(s)`);
-    if (lastVerifyReport.dropped.length) parts.push(`dropped ${lastVerifyReport.dropped.length} published outside ${lastVerifyReport.window}`);
+    const outOfWindow = lastVerifyReport.rejected.filter((r) => /outside/.test(r.reason || '')).length;
+    if (outOfWindow) parts.push(`dropped ${outOfWindow} published outside ${lastVerifyReport.window}`);
     return parts.length ? ` — ${parts.join(', ')}.` : '';
 }
 
@@ -7296,6 +7804,7 @@ if (searchBtn) {
         const prompt = document.getElementById('ai-prompt').value;
         const newsletterName = document.getElementById('newsletter-name').value;
         const model = document.getElementById('ai-model').value;
+        const searchEngine = getArticleSearchEngine();
 
         if (!prompt) {
             alert("Please enter a prompt to search for articles.");
@@ -7312,7 +7821,7 @@ if (searchBtn) {
         setAiQuery(prompt);
         if (newsletterName) setCurrentSessionName(newsletterName);
 
-        console.log("Initiating AI Search...", { newsletterName, prompt, model });
+        console.log("Initiating AI Search...", { newsletterName, prompt, model, searchEngine });
 
         searchBtn.disabled = true;
         searchBtn.textContent = "Searching...";
@@ -7322,7 +7831,7 @@ if (searchBtn) {
             const response = await fetch('/api/articles/search', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt, newsletterName, model }),
+                body: JSON.stringify({ prompt, newsletterName, model, searchEngine }),
             });
 
             const data = await parseJsonResponse(
@@ -7358,12 +7867,16 @@ if (searchBtn) {
 
                 if (data.stage === 'raw') {
                     try {
-                        const verified = await verifyArticlesRemote(data.articles);
-                        articles = verified.map(a => ({ ...a, addedAt: addedAtByUrl[normalizeUrl(a.url)] || now }));
+                        const verifyResult = await verifyArticlesRemote(data.articles, []);
+                        articles = verifyResult.articles.map(a => ({ ...a, addedAt: addedAtByUrl[normalizeUrl(a.url)] || now }));
                         saveState();
                         renderArticles();
                         if (searchStatus) {
-                            searchStatus.textContent = `Found and verified ${articles.length} articles!`;
+                            searchStatus.textContent = formatVerifyStatusMessage(
+                                articles.length,
+                                verifyResult.rejectedCount,
+                                (data.duplicateCount || 0) + verifyResult.duplicateCount,
+                            );
                         }
                     } catch (verifyErr) {
                         console.error("Verification error (raw articles were kept):", verifyErr);

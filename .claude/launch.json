@@ -5,7 +5,7 @@
       "name": "Newsletter Maker",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["start"],
-      "port": 61573,
+      "port": 5020,
       "autoPort": false
     }
   ]
