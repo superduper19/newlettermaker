@@ -7,6 +7,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const OpenAI = require('openai');
 const fs = require('fs');
 const path = require('path');
+const prioritySources = require('../lib/priority-sources');
 
 // Configure Multer for memory storage
 const upload = multer({ storage: multer.memoryStorage() });
@@ -80,7 +81,7 @@ const cleanArticleData = (row, index) => {
 };
 
 // Helper to verify URL and fetch content
-const attemptFetchAndAnalyze = async (url, skipScraping = false, title = '') => {
+const attemptFetchAndAnalyze = async (url, skipScraping = false, title = '', userAgent = null) => {
     if (!url) return { isValid: false, content: '' };
 
     // If we want to skip scraping, and the URL is already a final publisher URL (not a google search redirect),
@@ -98,7 +99,7 @@ const attemptFetchAndAnalyze = async (url, skipScraping = false, title = '') => 
         const response = await fetch(url, {
             method: 'GET',
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'User-Agent': userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
                 'Accept-Language': 'en-US,en;q=0.9',
             },
@@ -214,12 +215,18 @@ const attemptFetchAndAnalyze = async (url, skipScraping = false, title = '') => 
 // Sites intermittently block/rate-limit the first request (especially when several
 // categories fetch the same URL back-to-back) but succeed on a second try shortly
 // after, so retry once before giving up and asking the user for manual content.
+//
+// The retry also swaps in a non-browser User-Agent: some sites (norml.org) serve a
+// "Checking your browser... Javascript required" wall to browser UAs and plain HTML
+// to anything that identifies itself as a bot, so the same UA twice never gets in.
+const RETRY_UA = 'NewsletterMaker/1.0 (+https://purablis.com)';
+
 const verifyAndAnalyzeUrl = async (url, skipScraping = false, title = '') => {
     const first = await attemptFetchAndAnalyze(url, skipScraping, title);
     if (skipScraping || !first.isValid || first.isReadable) return first;
 
     await new Promise((resolve) => setTimeout(resolve, 1200));
-    const retry = await attemptFetchAndAnalyze(url, skipScraping, title);
+    const retry = await attemptFetchAndAnalyze(url, skipScraping, title, RETRY_UA);
     return retry.isReadable ? retry : first;
 };
 
@@ -893,10 +900,19 @@ Example format:
 // verification pass never throws away the (Claude-metered) search results.
 router.post('/verify', async (req, res) => {
     try {
-        const { articles: rawArticles } = req.body || {};
+        const { articles: rawArticles, since, until } = req.body || {};
         if (!Array.isArray(rawArticles) || rawArticles.length === 0) {
             return res.status(400).json({ error: 'No articles provided to verify.' });
         }
+
+        // Dates reported by an AI web search are unreliable: search engines surface an
+        // evergreen page's "updated" stamp, and a news page's furniture (a sidebar of
+        // other recent stories) gives a model several wrong dates to choose from. So we
+        // establish the real publication date from the publisher itself, then enforce
+        // the newsletter's date window on the corrected dates.
+        const dateCache = {};
+        const outOfWindow = [];
+        const corrected = [];
 
         const processArticle = async (article) => {
             let cleaned = cleanArticleData(article, 0);
@@ -915,6 +931,28 @@ router.post('/verify', async (req, res) => {
 
             if (finalUrl) {
                 cleaned.url = finalUrl;
+            }
+
+            // Google News redirect links can't be opened, so their feed date stands.
+            if (!cleaned.url.includes('news.google.com')) {
+                const resolved = await prioritySources.resolveArticleDate(cleaned.url, dateCache);
+                if (resolved.date) {
+                    const real = prioritySources.formatDateMMDDYY(resolved.date);
+                    if (real && real !== cleaned.date) {
+                        corrected.push({ title: cleaned.title, was: cleaned.date, now: real, via: resolved.via });
+                        cleaned.date = real;
+                    }
+                    cleaned.dateVerified = true;
+                    // An old post whose "updated" stamp is recent is an evergreen
+                    // explainer, not news — the window check below drops it.
+                    if (resolved.modified) cleaned.dateModified = prioritySources.formatDateMMDDYY(resolved.modified);
+                }
+
+                if ((since || until) && resolved.date && !prioritySources.withinWindow(resolved.date, since, until)) {
+                    outOfWindow.push({ title: cleaned.title, date: cleaned.date, url: cleaned.url });
+                    console.log(`Dropping ${cleaned.url}: published ${cleaned.date}, outside ${since || 'any'}..${until || 'today'}`);
+                    return null;
+                }
             }
 
             // Categorize (and apply rejection rules from brief, using description fallback if unreadable/skipped)
@@ -936,12 +974,17 @@ router.post('/verify', async (req, res) => {
         // Re-index
         const finalArticles = validArticles.map((a, i) => ({ ...a, id: i + 1 }));
 
-        console.log(`Verification complete: ${finalArticles.length}/${rawArticles.length} articles valid after categorization.`);
+        console.log(
+            `Verification complete: ${finalArticles.length}/${rawArticles.length} valid. `
+            + `${corrected.length} date(s) corrected, ${outOfWindow.length} dropped as outside the date window.`,
+        );
 
         res.json({
             success: true,
             count: finalArticles.length,
             articles: finalArticles,
+            datesCorrected: corrected,
+            droppedOutOfWindow: outOfWindow,
         });
     } catch (error) {
         console.error('Error with article verification:', error);
@@ -1474,6 +1517,497 @@ router.post('/summary-rules', express.json(), (req, res) => {
         res.json({ ok: true });
     } catch (err) {
         res.status(500).json({ error: 'Failed to save summary rules' });
+    }
+});
+
+// ── Duplicate story grouping ──────────────────────────────────────────────────
+// A sweep across six trade sites routinely returns eight or ten write-ups of the
+// same event from different publishers. Those are not URL duplicates — every one is
+// a distinct article — so nothing upstream catches them.
+//
+// This has to see the WHOLE list in one request: two write-ups of the same story sit
+// at arbitrary positions, so the batched /modify path structurally cannot spot them.
+// It only ever proposes groups; removal is the user's call in the UI.
+router.post('/find-duplicates', express.json(), async (req, res) => {
+    try {
+        const { articles: inputArticles, model } = req.body || {};
+        if (!Array.isArray(inputArticles) || inputArticles.length < 2) {
+            return res.status(400).json({ error: 'Need at least 2 articles to compare.' });
+        }
+        if (inputArticles.length > 200) {
+            return res.status(400).json({ error: `Too many articles to compare at once (${inputArticles.length}). Archive some first.` });
+        }
+
+        const provider = resolveAiProvider(model);
+        if (provider.error) return res.status(503).json({ error: provider.error, configured: false });
+
+        // Descriptions are trimmed hard: identifying the underlying event needs the
+        // gist, not the full text, and the whole list has to fit in one prompt.
+        const listing = inputArticles.map((a, i) => [
+            `[${i}] ${a.title || '(untitled)'}`,
+            `    SOURCE: ${a.sourceLabel || hostLabelFor(a.url)}   DATE: ${a.date || '(unknown)'}`,
+            `    ${String(a.description || '').slice(0, 220)}`,
+        ].join('\n')).join('\n\n');
+
+        const systemPrompt = 'You are a newsletter editor identifying redundant coverage. You only output valid JSON. No markdown, no commentary.';
+        const userMessage = `Below is a newsletter's full article list. Many articles are DIFFERENT publishers covering the SAME news storyline. The newsletter can only run one item per storyline, so they must be grouped.
+
+GROUP AT THE LEVEL OF THE STORYLINE, NOT THE INDIVIDUAL EVENT. This is the most important rule. A single storyline includes every stage and angle of one news development:
+- the vote, the signing, and the deadline it sets are ONE storyline, not three
+- reaction and fallout pieces ("industry lobbies feud after the delay") belong to that same storyline
+- explainers and "where things stand" pieces about that development belong to it too
+- a differently-worded headline about the same development still belongs to it
+
+Worked example: "House delays hemp-THC ban until Dec 11", "Congress votes to hit pause on federal hemp ban", "Trump signs bill delaying hemp THC ban", "Trump just delayed the hemp ban", "Hemp lobbies feud after Congress delays ban", and "Federal Hemp Ban 2026: Where Things Stand" are ALL ONE GROUP. They are the same storyline: the federal hemp ban being delayed.
+
+Genuinely separate storylines stay separate: a different state's law, a different company's earnings, a lawsuit about a different jurisdiction, or an unrelated bill are each their own story even when they share a subject like "hemp" or "legalization".
+
+BE EXHAUSTIVE. Before you answer, re-read the whole list once per group and confirm you have caught EVERY article belonging to it. Missing one defeats the purpose. It is better to group two articles that turn out to be separable than to leave a duplicate ungrouped.
+
+For each group, choose which single article to KEEP, preferring in this order:
+1. The most substantial and complete write-up of the storyline
+2. A source whose article text we can actually read (avoid keeping one whose SOURCE is via Google News if a real alternative exists)
+3. The most recent date, so the kept article reflects the latest state of the story
+
+ARTICLES:
+${listing}
+
+Return a JSON array of groups. Include ONLY groups with 2 or more articles. If nothing is redundant, return [].
+
+Each group object must have exactly:
+- "topic": short description of the shared storyline, under 10 words
+- "keep": the [number] of the article to keep
+- "drop": array of the [numbers] of every other article on that storyline
+- "reason": under 15 words, why that one was chosen
+
+Example: [{"topic":"Federal hemp ban delayed to December","keep":4,"drop":[0,1,2,3,6,7],"reason":"fullest account, readable source"}]`;
+
+        let content = '';
+        const { apiModel, isGemini, isOpenRouter } = provider;
+
+        try {
+            if (isGemini) {
+                const geminiModel = genAI.getGenerativeModel({ model: apiModel });
+                const result = await geminiModel.generateContent(`${systemPrompt}\n\n${userMessage}`);
+                content = await result.response.text();
+            } else if (isOpenRouter) {
+                const response = await openrouter.chat.completions.create({
+                    model: apiModel,
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userMessage },
+                    ],
+                }, { timeout: 300000 });
+                content = response.choices[0]?.message?.content || '';
+            } else {
+                const message = await anthropic.messages.create({
+                    model: apiModel,
+                    max_tokens: 8000,
+                    system: systemPrompt,
+                    messages: [{ role: 'user', content: userMessage }],
+                }, { timeout: 300000 });
+                content = getAnthropicTextContent(message);
+            }
+        } catch (aiError) {
+            console.error('Duplicate grouping failed:', aiError);
+            return res.status(500).json(buildAiErrorResponse(aiError, apiModel));
+        }
+
+        let groups = [];
+        try {
+            groups = extractJSON(content);
+        } catch (e) {
+            return res.status(500).json({ error: 'Could not read the AI response.', details: String(content).slice(0, 400) });
+        }
+
+        // Sanitize hard: indexes must be real, distinct, and never both kept and dropped.
+        const used = new Set();
+        const clean = (Array.isArray(groups) ? groups : []).map((g) => {
+            const keep = Number(g.keep);
+            if (!Number.isInteger(keep) || !inputArticles[keep] || used.has(keep)) return null;
+
+            const drop = [...new Set((Array.isArray(g.drop) ? g.drop : []).map(Number))]
+                .filter((i) => Number.isInteger(i) && inputArticles[i] && i !== keep && !used.has(i));
+            if (drop.length === 0) return null;
+
+            used.add(keep);
+            drop.forEach((i) => used.add(i));
+            return {
+                topic: String(g.topic || 'Same story').slice(0, 120),
+                reason: String(g.reason || '').slice(0, 160),
+                keep,
+                drop,
+            };
+        }).filter(Boolean);
+
+        // Second pass. The first pass reliably finds the storylines but tends to miss
+        // individual members of them, so every still-ungrouped article is re-checked
+        // against the groups it produced. Skipped when there is nothing to check.
+        let sweptUp = 0;
+        const ungrouped = inputArticles.map((_, i) => i).filter((i) => !used.has(i));
+
+        if (clean.length && ungrouped.length) {
+            try {
+                const groupList = clean.map((g, gi) => `(${gi}) ${g.topic} — e.g. "${inputArticles[g.keep].title}"`).join('\n');
+                const candidates = ungrouped.map((i) => `[${i}] ${inputArticles[i].title || '(untitled)'}\n     ${String(inputArticles[i].description || '').slice(0, 180)}`).join('\n\n');
+
+                const sweepMessage = `These storylines were already identified in a newsletter's article list:
+${groupList}
+
+The articles below were NOT assigned to any of them. MOST OF THEM ARE GENUINELY THEIR OWN STORIES and must be left alone. Your job is only to catch the occasional article that is unmistakably another write-up of a storyline above.
+
+An article belongs to a storyline ONLY if it covers the very same law, bill, company action or event. Sharing a theme is not enough. Reject anything where:
+- the jurisdiction differs — a Florida marketing rule is NOT the California marketing law; an Ohio court ruling is NOT a federal bill
+- the actor differs — a different company, agency, legislature or court
+- it is a research study, survey or opinion piece about the subject area rather than coverage of that specific event
+
+Only add an article you would defend to an editor who is about to delete it. When in doubt, leave it out.
+
+UNASSIGNED ARTICLES:
+${candidates}
+
+Return a JSON array. Each object must have exactly:
+- "article": the [number] of the unassigned article
+- "group": the (number) of the storyline it belongs to
+- "why": under 12 words naming the shared law/event, proving it is the same one
+
+Return [] if none of them belong, which is a normal and expected answer. No markdown, no commentary.`;
+
+                let sweepContent = '';
+                if (isGemini) {
+                    const gm = genAI.getGenerativeModel({ model: apiModel });
+                    sweepContent = await (await gm.generateContent(`${systemPrompt}\n\n${sweepMessage}`)).response.text();
+                } else if (isOpenRouter) {
+                    const resp = await openrouter.chat.completions.create({
+                        model: apiModel,
+                        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: sweepMessage }],
+                    }, { timeout: 300000 });
+                    sweepContent = resp.choices[0]?.message?.content || '';
+                } else {
+                    const msg = await anthropic.messages.create({
+                        model: apiModel,
+                        max_tokens: 4000,
+                        system: systemPrompt,
+                        messages: [{ role: 'user', content: sweepMessage }],
+                    }, { timeout: 300000 });
+                    sweepContent = getAnthropicTextContent(msg);
+                }
+
+                for (const entry of extractJSON(sweepContent) || []) {
+                    const articleIndex = Number(entry.article);
+                    const group = clean[Number(entry.group)];
+                    if (!group || !Number.isInteger(articleIndex)) continue;
+                    if (!inputArticles[articleIndex] || used.has(articleIndex)) continue;
+                    group.drop.push(articleIndex);
+                    used.add(articleIndex);
+                    sweptUp++;
+                }
+            } catch (sweepError) {
+                // A failed second pass just means fewer catches, never a failed request.
+                console.warn('Duplicate grouping second pass failed:', sweepError.message);
+            }
+        }
+
+        console.log(`Duplicate grouping: ${inputArticles.length} articles -> ${clean.length} group(s), ${clean.reduce((n, g) => n + g.drop.length, 0)} redundant (${sweptUp} added on second pass).`);
+
+        res.json({
+            success: true,
+            compared: inputArticles.length,
+            groups: clean,
+            sweptUp,
+            redundantCount: clean.reduce((n, g) => n + g.drop.length, 0),
+        });
+    } catch (error) {
+        console.error('find-duplicates failed:', error);
+        res.status(500).json(buildAiErrorResponse(error, req.body && req.body.model));
+    }
+});
+
+function hostLabelFor(url) {
+    try {
+        return new URL(url).hostname.replace(/^www\./, '');
+    } catch {
+        return 'unknown';
+    }
+}
+
+// ── Priority sources ──────────────────────────────────────────────────────────
+// Sites we sweep in full rather than hoping a general web search turns them up.
+// Every article published in the window is collected, then judged against the same
+// newsletter criteria the categorizer uses.
+
+// The category briefs, stated for the model. These mirror the rules encoded in
+// categorizeArticle() above so a swept article is judged the same way a searched one is.
+const CATEGORY_BRIEF = `MED — medical & science: clinical trials, published research, patient access, FDA/NIH action, the opioid/fentanyl crisis. Exclude studies that are merely announced or planned, and anti-cannabis scare pieces.
+THC — marijuana policy & industry: legalization, rescheduling, regulation, dispensaries, adult-use markets, cannabis culture and consumer trends. Exclude local city ordinances, zoning and planning items, small individual busts, and anti-cannabis advocacy.
+CBD — hemp & cannabinoids: hemp farming and supply chain, CBD products, delta-8/delta-10, THCA, CBG, CBN, the Farm Bill. Exclude advertising, generic "CBD helps X" wellness filler and pure product PR.
+INV — business & investment: M&A, earnings, stock moves, fundraising, major multi-state-operator news, and international market news. Exclude small company press releases and routine local revenue reports.`;
+
+const REJECT_BRIEF = `Reject an article when it is: a pure company press release (unless it is M&A, major earnings, or major clinical-trial results); an advertisement, sponsored post, or the site's own promotion (conferences, webinars, memberships, internships, fundraising appeals, podcast episodes); a duplicate of another article in this batch; or off-topic for all four newsletters.`;
+
+function buildSourceEvaluationPrompt(items, options) {
+    const { since, until, extraInstructions } = options;
+    const window = since || until
+        ? `Only keep articles published between ${since || 'any date'} and ${until || 'today'}. The date of each candidate is given; if a date is missing, keep the article and leave its date empty.`
+        : 'No date restriction.';
+
+    const candidates = items.map((item, i) => [
+        `[${i}] TITLE: ${item.title}`,
+        `    SOURCE: ${item.sourceLabel}`,
+        `    DATE: ${item.date || '(unknown)'}`,
+        item.restrictions ? `    SOURCE RULES: ${item.restrictions}` : null,
+        item.isRedirectLink ? '    NOTE: article body unavailable (site blocks automated access) — judge on the headline and date alone.' : null,
+        `    TEXT: ${(item.description || '(no excerpt available)').slice(0, 900)}`,
+    ].filter(Boolean).join('\n')).join('\n\n');
+
+    return `You are the editor of four cannabis-industry newsletters. Below is every article published by a set of trusted sources in a date window. Judge each one against the newsletter criteria and decide whether it belongs.
+
+CATEGORY CRITERIA:
+${CATEGORY_BRIEF}
+
+REJECTION RULES:
+${REJECT_BRIEF}
+
+DATE RULE: ${window}
+
+SOURCE RULES: Each candidate may carry its own "SOURCE RULES". Those restrictions are mandatory for articles from that source.
+${extraInstructions ? `\nADDITIONAL INSTRUCTIONS FROM THE EDITOR (these override the general rules where they conflict):\n${extraInstructions}\n` : ''}
+CANDIDATES:
+${candidates}
+
+Return a single valid JSON array, one object per candidate you decide to KEEP. Omit rejected candidates entirely. No markdown, no commentary.
+
+Each object must have exactly these keys:
+- "index": the [number] of the candidate
+- "title": a cleaned-up headline (fix truncation and title case; do not invent facts)
+- "description": a 1-2 sentence factual summary drawn only from the text provided
+- "ranks": an object with a key for each newsletter it belongs in, valued "Y" for a strong fit or "YM" for a maybe. Example: {"THC":"Y","INV":"YM"}. Include only the categories that genuinely apply.
+- "reason": under 12 words, why it was kept
+
+Example: [{"index":3,"title":"...","description":"...","ranks":{"THC":"Y"},"reason":"state legalization vote"}]`;
+}
+
+/** Run one batch of harvested items through the selected model. */
+async function evaluateSourceBatch(items, provider, options) {
+    const prompt = buildSourceEvaluationPrompt(items, options);
+    const { apiModel, isGemini, isOpenRouter } = provider;
+    const system = 'You are a newsletter editor that only outputs valid JSON arrays. No markdown, no conversational text.';
+
+    if (isGemini) {
+        const geminiModel = genAI.getGenerativeModel({ model: apiModel });
+        const result = await geminiModel.generateContent(`${system}\n\n${prompt}`);
+        return await result.response.text();
+    }
+    if (isOpenRouter) {
+        const response = await openrouter.chat.completions.create({
+            model: apiModel,
+            messages: [
+                { role: 'system', content: system },
+                { role: 'user', content: prompt },
+            ],
+        }, { timeout: 300000 });
+        return response.choices[0]?.message?.content || '';
+    }
+    const message = await anthropic.messages.create({
+        model: apiModel,
+        max_tokens: 8000,
+        system,
+        messages: [{ role: 'user', content: prompt }],
+    }, { timeout: 300000 });
+    return getAnthropicTextContent(message);
+}
+
+function normalizeSourceList(list) {
+    const input = Array.isArray(list) && list.length ? list : prioritySources.DEFAULT_SOURCES;
+    return input
+        .filter((s) => s && s.url && String(s.url).trim())
+        .map((s) => {
+            let url = String(s.url).trim();
+            if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+            return {
+                url,
+                label: String(s.label || '').trim() || prioritySources.hostOf(url),
+                restrictions: String(s.restrictions || '').trim(),
+                enabled: s.enabled !== false,
+            };
+        });
+}
+
+// GET /api/articles/priority-sources — the seed list the UI starts from.
+router.get('/priority-sources', (req, res) => {
+    res.json({ sources: prioritySources.DEFAULT_SOURCES });
+});
+
+// POST /api/articles/priority-sources/check — pre-flight. Can we actually read each
+// site, by which route, and do its article pages come back unblocked?
+router.post('/priority-sources/check', express.json(), async (req, res) => {
+    try {
+        const sources = normalizeSourceList(req.body && req.body.sources);
+        if (sources.length === 0) return res.status(400).json({ error: 'No sources to check.' });
+
+        const results = await prioritySources.mapLimited(sources, 3, async (source) => {
+            try {
+                return await prioritySources.checkSourceAccess(source, { sampleSize: 2 });
+            } catch (error) {
+                return {
+                    url: source.url,
+                    label: source.label,
+                    ok: false,
+                    blockReason: error.message,
+                    notes: ['Access check threw an error.'],
+                    samples: [],
+                };
+            }
+        });
+
+        res.json({ success: true, results });
+    } catch (error) {
+        console.error('Priority source check failed:', error);
+        res.status(500).json({ error: 'Access check failed', details: error.message });
+    }
+});
+
+// POST /api/articles/priority-sources/sweep — harvest every article in the window
+// from the enabled sources, then evaluate them against the newsletter criteria.
+router.post('/priority-sources/sweep', express.json(), async (req, res) => {
+    try {
+        const {
+            sources: rawSources,
+            since,
+            until,
+            model,
+            existingUrls = [],
+            perSourceLimit = 40,
+            extraInstructions = '',
+        } = req.body || {};
+
+        const sources = normalizeSourceList(rawSources).filter((s) => s.enabled);
+        if (sources.length === 0) return res.status(400).json({ error: 'No enabled sources to sweep.' });
+
+        const provider = resolveAiProvider(model);
+        if (provider.error) return res.status(503).json({ error: provider.error, configured: false });
+
+        console.log(`Priority sweep: ${sources.length} sources, since=${since || 'any'}, until=${until || 'today'}`);
+
+        // Stage 1 — harvest (network only, no AI spend).
+        const harvests = await prioritySources.mapLimited(sources, 3, async (source) => {
+            try {
+                return await prioritySources.harvestSource(source, {
+                    sinceISO: since || null,
+                    untilISO: until || null,
+                    limit: Math.min(Number(perSourceLimit) || 40, 60),
+                });
+            } catch (error) {
+                return { source: source.url, label: source.label, method: null, blocked: true, items: [], notes: [error.message] };
+            }
+        });
+
+        const seen = new Set((existingUrls || []).map((u) => String(u).replace(/^https?:\/\//, '').replace(/\/+$/, '').toLowerCase()));
+        const candidates = [];
+        for (const harvest of harvests) {
+            for (const item of harvest.items) {
+                const key = String(item.url).replace(/^https?:\/\//, '').replace(/\/+$/, '').toLowerCase();
+                if (seen.has(key)) continue;
+                seen.add(key);
+                candidates.push(item);
+            }
+        }
+
+        const sourceReport = harvests.map((h) => ({
+            label: h.label,
+            url: h.source,
+            method: h.method,
+            degraded: !!h.degraded,
+            blocked: !!h.blocked,
+            harvested: h.items.length,
+            notes: h.notes || [],
+        }));
+
+        if (candidates.length === 0) {
+            return res.json({
+                success: true,
+                stage: 'raw',
+                articles: [],
+                harvested: 0,
+                kept: 0,
+                sources: sourceReport,
+                message: 'No new articles found in that window (everything found was already in the workspace).',
+            });
+        }
+
+        // Stage 2 — evaluate in batches so one oversized prompt can't blow the context.
+        const BATCH = 20;
+        const batches = [];
+        for (let i = 0; i < candidates.length; i += BATCH) batches.push(candidates.slice(i, i + BATCH));
+
+        // Batches run a few at a time: a full sweep can be 100+ articles, and doing
+        // them one after another risks hitting the serverless request timeout.
+        const evalErrors = [];
+        const batchResults = await mapWithConcurrency(batches, 3, async (batch) => {
+            try {
+                const content = await evaluateSourceBatch(batch, provider, { since, until, extraInstructions });
+                const decisions = extractJSON(content);
+                const out = [];
+                for (const decision of Array.isArray(decisions) ? decisions : []) {
+                    const item = batch[Number(decision.index)];
+                    if (!item) continue;
+                    const ranks = decision.ranks && typeof decision.ranks === 'object' ? decision.ranks : {};
+                    const categories = Object.keys(ranks).filter((c) => ['MED', 'THC', 'CBD', 'INV'].includes(c));
+                    if (categories.length === 0) continue;
+                    out.push({
+                        title: decision.title || item.title,
+                        url: item.url,
+                        description: decision.description || item.description || '',
+                        date: item.date || '',
+                        categories,
+                        ranks: categories.reduce((acc, c) => ({ ...acc, [c]: ranks[c] === 'Y' ? 'Y' : 'YM' }), {}),
+                        // Notes stays empty — that column is the user's own scratch space.
+                        // The source is kept on sourceLabel, which the UI and the
+                        // duplicate grouper read directly.
+                        notes: '',
+                        status: 'Y',
+                        paywall: false,
+                        sourceLabel: item.sourceLabel,
+                        isRedirectLink: !!item.isRedirectLink,
+                    });
+                }
+                return out;
+            } catch (error) {
+                console.error('Priority sweep evaluation batch failed:', error);
+                evalErrors.push(parseAIError(error));
+                return [];
+            }
+        });
+        const kept = batchResults.flat();
+
+        if (kept.length === 0 && evalErrors.length) {
+            return res.status(500).json({ error: `Evaluation failed: ${evalErrors[0]}`, sources: sourceReport, harvested: candidates.length });
+        }
+
+        const articles = kept.map((a, i) => ({
+            ...cleanArticleData(a, 0),
+            id: i + 1,
+            categories: a.categories,
+            ranks: a.ranks,
+            notes: a.notes,
+            sourceLabel: a.sourceLabel,
+            isRedirectLink: a.isRedirectLink,
+            needsVerification: true,
+        }));
+
+        res.json({
+            success: true,
+            stage: 'raw',
+            source: 'priority-sweep',
+            harvested: candidates.length,
+            kept: articles.length,
+            sources: sourceReport,
+            evalErrors,
+            articles,
+        });
+    } catch (error) {
+        console.error('Priority sweep failed:', error);
+        res.status(500).json(buildAiErrorResponse(error, req.body && req.body.model));
     }
 });
 

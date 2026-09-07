@@ -107,7 +107,8 @@
 
 /* Cards */
 .card {
-  @apply bg-linear-to-b from-[rgba(255,255,255,0.95)] to-[rgba(255,250,243,0.98)] rounded-[26px] shadow-[0_24px_58px_rgba(96,80,54,0.1)] border border-solid border-[rgba(132,114,83,0.14)] overflow-hidden mb-6 backdrop-blur-[10px];
+  @apply bg-linear-to-b from-[rgba(255,255,255,0.95)] to-[rgba(255,250,243,0.98)] rounded-[26px] shadow-[0_24px_58px_rgba(96,80,54,0.1)] border border-solid border-[rgba(132,114,83,0.14)] mb-6 backdrop-blur-[10px];
+  overflow: hidden;
 }
 
 .card-header {
@@ -466,6 +467,23 @@ input[type="text"], input[type="date"], input[type="file"], textarea, select {
   @apply text-right pt-1.5;
 }
 
+/*
+ * Article summary. It sits on its own grid row spanning from the Article column
+ * across to the edge of Notes, stopping short of the Archive/Remove buttons — far
+ * wider than the Article column alone, so three lines hold several times the text.
+ * Column 2 is Article, line 11 is where col-actions begins.
+ */
+.article-summary {
+  grid-column: 2 / 11;
+  grid-row: 2;
+  @apply m-0 text-[0.85rem] text-[#666] leading-[1.45] min-w-0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .article-link {
   @apply /*text-[#2196F3]*/ no-underline text-[0.85rem] hover:underline;
 }
@@ -659,12 +677,13 @@ input[type="text"], input[type="date"], input[type="file"], textarea, select {
 
 /* Stat Items */
 .stat-item {
-  @apply inline-block py-1.75 px-3 rounded-full text-[0.8rem] font-bold bg-[rgba(255,255,255,0.72)] text-[#495057] ml-1 shadow-[0_10px_22px_rgba(95,77,52,0.06)];
+  @apply inline-block py-0.5 px-2 rounded-full text-[0.75rem] font-bold bg-[rgba(255,255,255,0.72)] text-[#495057] whitespace-nowrap shadow-[0_4px_10px_rgba(95,77,52,0.05)];
 }
 
 .article-stats {
-  @apply flex items-center gap-2 flex-wrap;
+  @apply flex items-center gap-1 flex-wrap;
 }
+
 
 /* Toggle Button Group */
 .toggle-btn {

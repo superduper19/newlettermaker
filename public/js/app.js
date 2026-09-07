@@ -1385,6 +1385,8 @@ function switchStep(stepNumber) {
     const targetView = document.getElementById(`step-${step}`);
     if (targetView) targetView.classList.add('active');
 
+    syncStatsVisibility();
+
     // Logic for specific steps
     if (step === 2) {
         populateSavedDropdown();
@@ -5366,9 +5368,6 @@ function renderArticles() {
                                 ${admonition !== null ? `<span class="admonition-text font-bold text-[0.75rem] text-[${admonition.color}] mt-2">${admonition.message}</span>` : ''}
                             </div>
                         </div>
-                        <p class="my-1.25 text-[0.85rem] text-[#666]">
-                            ${article.description ? article.description.substring(0, 120) + '...' : 'No description'}
-                        </p>
                     </div>
 
                     <div class="col-date">
@@ -5420,7 +5419,11 @@ function renderArticles() {
                             Remove
                         </button>
                     </div>
-                    
+
+                    <p class="article-summary" title="${escapeHtml(article.description || '')}">
+                        ${article.description ? escapeHtml(article.description.substring(0, 600)) : 'No description'}
+                    </p>
+
                     <div class="col-span-full flex items-start gap-1.25 mt-2 border-t border-dashed border-[#e2e8f0] pt-2">
                         <span class="text-[0.7rem] font-bold text-[#64748b] pt-1">URL:</span>
                         <textarea
@@ -5799,9 +5802,23 @@ function getSelectedRankCounts() {
     return counts;
 }
 
+/**
+ * The counts live in the nav row, which every step shares — but they describe the
+ * article list, and Image View has its own separate stats. So show them on Article
+ * View only rather than having two disagreeing rows on screen at once.
+ */
+function syncStatsVisibility() {
+    const statsEl = document.getElementById('article-stats');
+    if (!statsEl) return;
+    const active = document.querySelector('.step.active');
+    const onArticleView = !!active && active.getAttribute('data-step') === '2';
+    statsEl.classList.toggle('hidden', !onArticleView);
+}
+
 function updateStats() {
     const statsEl = document.getElementById('article-stats');
     if (!statsEl) return;
+    syncStatsVisibility();
 
     articles.forEach(normalizeArticleDefaults);
 
@@ -5816,10 +5833,16 @@ function updateStats() {
         ? `<span class="stat-item bg-[#e8eaf6] text-[#283593] font-semibold">${currentSessionName}</span>`
         : '';
 
+    // Total counts every article brought back, with no exclusions at all — unlike
+    // Selected (checkbox state) and the category counts, which both skip rows.
+    const totalCount = articles.length;
+    const yCount = articles.filter((a) => normalizeArticleStatus(a.status) === 'Y').length;
+
     const statsHtml =
         `${sessionLabel}
-        <span class="stat-item" title="Total articles in list">Total: ${articles.length}</span>
-        <span class="stat-item bg-[#e0f7fa] text-[#006064]" title="Articles checked in the Select column">Selected: ${selectedCount}</span>
+        <span class="stat-item bg-[#e0f7fa] text-[#006064]" title="Articles checked in the Select column">Sel: ${selectedCount}</span>
+        <span class="stat-item font-semibold" title="Every article brought back, including unchecked ones">Total: ${totalCount}</span>
+        <span class="stat-item bg-[#e8f5e9] text-[#1b5e20] font-semibold" title="Articles whose Status is Y">Y: ${yCount}</span>
         <span class="stat-item bg-[#e3f2fd] text-[#0d47a1]" title="Articles with rank # in MED">MED: ${counts.MED}</span>
         <span class="stat-item bg-[#e8f5e9] text-[#1b5e20]" title="Articles with rank # in THC">THC: ${counts.THC}</span>
         <span class="stat-item bg-[#fff3e0] text-[#e65100]" title="Articles with rank # in CBD">CBD: ${counts.CBD}</span>
@@ -6413,7 +6436,7 @@ async function searchMoreArticles() {
                     });
                     saveState();
                     renderArticles();
-                    status.textContent = `Added and verified ${verified.length} new articles.` + (dupeCount > 0 ? ` (${dupeCount} duplicates skipped)` : '');
+                    status.textContent = `Added and verified ${verified.length} new articles.` + (dupeCount > 0 ? ` (${dupeCount} duplicates skipped)` : '') + verifyReportSuffix();
                 } catch (verifyErr) {
                     console.error("Verification error (raw articles were kept):", verifyErr);
                     status.textContent = `Added ${newArticles.length} new articles, but verification/categorization failed or timed out — kept them unverified.`;
@@ -6445,15 +6468,583 @@ function normalizeUrl(url) {
     return url.replace(/^https?:\/\//, '').replace(/\/+$/, '').toLowerCase();
 }
 
+// --- SAME-STORY GROUPING ------------------------------------------------------
+// Ten publishers writing up one bill signing are ten distinct articles with ten
+// distinct URLs, so URL dedupe never sees them. The whole list goes to the model in
+// one request (Modify can't do this — it works in batches of 8 and cannot delete),
+// and the result is only ever a proposal the user confirms here.
+
+let duplicateGroups = [];
+
+window.findDuplicateStories = async () => {
+    if (articles.length < 2) return alert('Need at least 2 articles to compare.');
+
+    const btn = document.getElementById('btn-find-duplicates');
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Comparing...';
+
+    try {
+        const response = await fetch('/api/articles/find-duplicates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: document.getElementById('ai-model').value,
+                articles: articles.map((a) => ({
+                    title: a.title,
+                    url: a.url,
+                    date: a.date || '',
+                    description: a.description || '',
+                    sourceLabel: a.sourceLabel || '',
+                })),
+            }),
+        });
+
+        const data = await parseJsonResponse(response, 'Grouping failed: server returned HTML instead of JSON (often a timeout).');
+        if (!data.success) {
+            showAiFailureAlert('Grouping failed', data);
+            return;
+        }
+
+        duplicateGroups = data.groups || [];
+        if (duplicateGroups.length === 0) {
+            alert(`Compared all ${data.compared} articles — no two are covering the same story.`);
+            return;
+        }
+        renderDuplicateGroups(data);
+    } catch (err) {
+        console.error(err);
+        if (isAnthropicCreditError(err.message)) {
+            showAiFailureAlert('Grouping failed — Claude credits', { error: err.message });
+        } else {
+            alert('Grouping failed: ' + (err.message || 'See console for details.'));
+        }
+    } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+    }
+};
+
+function renderDuplicateGroups(data) {
+    const body = document.getElementById('duplicate-groups-body');
+    const modal = document.getElementById('duplicate-groups-modal');
+    if (!body || !modal) return;
+
+    body.innerHTML = duplicateGroups.map((group, gi) => {
+        const members = [group.keep, ...group.drop];
+        const skipped = group.skipped === true;
+
+        const rows = members.map((idx) => {
+            const a = articles[idx];
+            if (!a) return '';
+            const isKeep = idx === group.keep;
+            const source = a.sourceLabel || (a.url || '').replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
+            const fate = skipped
+                ? '· kept'
+                : (isKeep ? '· <b>KEEP THIS ONE</b>' : '· will be removed');
+            return `
+              <label class="flex items-start gap-2 py-1.5 px-2 rounded ${isKeep && !skipped ? 'bg-[#e8f5e9]' : 'hover:bg-[#fafafa]'} cursor-pointer">
+                <input type="radio" name="dupe-group-${gi}" value="${idx}" ${isKeep && !skipped ? 'checked' : ''} onchange="setDuplicateKeep(${gi}, ${idx})" class="mt-1" title="Keep this one, remove the others">
+                <span class="flex-1 min-w-0">
+                  <span class="block text-[0.85rem] ${isKeep && !skipped ? 'font-semibold text-[#1b5e20]' : 'text-[#333]'}">${escapeHtml(a.title || '(untitled)')}</span>
+                  <span class="block text-[0.72rem] text-[#777]">${escapeHtml(source)} · ${escapeHtml(a.date || 'no date')} ${fate}</span>
+                </span>
+              </label>`;
+        }).join('');
+
+        // "None" belongs in the same radio set as the articles: choosing a keeper and
+        // choosing to leave the group alone are the same decision, so they should be
+        // the same control rather than a separate checkbox elsewhere.
+        const noneRow = `
+              <label class="flex items-start gap-2 py-1.5 px-2 mt-1 rounded border-t border-[#f0eee8] ${skipped ? 'bg-[#fff8e1]' : 'hover:bg-[#fafafa]'} cursor-pointer">
+                <input type="radio" name="dupe-group-${gi}" value="none" ${skipped ? 'checked' : ''} onchange="setDuplicateSkip(${gi}, true)" class="mt-1" title="Leave this whole group alone">
+                <span class="flex-1 min-w-0">
+                  <span class="block text-[0.85rem] ${skipped ? 'font-semibold text-[#e65100]' : 'text-[#555]'}">None — keep all ${members.length}, change nothing</span>
+                  <span class="block text-[0.72rem] text-[#777]">Use this when the grouping is wrong</span>
+                </span>
+              </label>`;
+
+        return `
+          <div class="mb-4 border ${skipped ? 'border-[#ffcc80]' : 'border-[#e0ddd5]'} rounded-lg overflow-hidden">
+            <div class="py-1.5 px-2.5 ${skipped ? 'bg-[#fff8e1]' : 'bg-[#f6f4ef]'} flex items-baseline gap-2 flex-wrap">
+              <span class="text-[0.85rem] font-semibold text-[#16423c]">${escapeHtml(group.topic)}</span>
+              <span class="text-[0.72rem] text-[#777]">${members.length} articles${group.reason ? ` · ${escapeHtml(group.reason)}` : ''}</span>
+              ${skipped ? '<span class="ml-auto text-[0.72rem] font-semibold text-[#e65100]">skipped</span>' : ''}
+            </div>
+            <div class="p-1.5">${rows}${noneRow}</div>
+          </div>`;
+    }).join('');
+
+    updateDuplicateSummary(data.compared);
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+/** "Keep all" opts a whole group out, so nothing in it is touched. */
+window.setDuplicateSkip = (groupIndex, skipped) => {
+    if (!duplicateGroups[groupIndex]) return;
+    duplicateGroups[groupIndex].skipped = !!skipped;
+    renderDuplicateGroups({ compared: articles.length });
+};
+
+window.setAllDuplicateSkip = (skipped) => {
+    duplicateGroups.forEach((g) => { g.skipped = !!skipped; });
+    renderDuplicateGroups({ compared: articles.length });
+};
+
+/** Every article marked for removal across the groups still in play. */
+function duplicatesMarkedForRemoval() {
+    return duplicateGroups.filter((g) => !g.skipped).flatMap((g) => g.drop);
+}
+
+window.setDuplicateKeep = (groupIndex, keepIndex) => {
+    const group = duplicateGroups[groupIndex];
+    if (!group) return;
+    const members = [group.keep, ...group.drop];
+    group.keep = keepIndex;
+    group.drop = members.filter((i) => i !== keepIndex);
+    // Picking an article is the opposite of "None", so it takes the group off skip.
+    group.skipped = false;
+    renderDuplicateGroups({ compared: articles.length });
+};
+
+function updateDuplicateSummary(compared) {
+    const el = document.getElementById('duplicate-groups-summary');
+    const total = duplicatesMarkedForRemoval().length;
+    const active = duplicateGroups.filter((g) => !g.skipped).length;
+
+    if (el) {
+        el.textContent = total === 0
+            ? `${duplicateGroups.length} group(s) found — nothing marked for removal.`
+            : `${active} group(s) across ${compared || articles.length} articles — keeping ${active}, removing ${total}.`;
+    }
+
+    // Buttons name what actually happens to the articles you did NOT pick.
+    const archiveBtn = document.getElementById('btn-dupe-archive');
+    const removeBtn = document.getElementById('btn-dupe-remove');
+    if (archiveBtn) {
+        archiveBtn.textContent = total ? `Archive the other ${total}` : 'Archive the others';
+        archiveBtn.disabled = total === 0;
+        archiveBtn.style.opacity = total === 0 ? '0.45' : '';
+    }
+    if (removeBtn) {
+        removeBtn.textContent = total ? `Delete the other ${total}` : 'Delete the others';
+        removeBtn.disabled = total === 0;
+        removeBtn.style.opacity = total === 0 ? '0.45' : '';
+    }
+}
+
+window.closeDuplicateGroups = () => {
+    const modal = document.getElementById('duplicate-groups-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+};
+
+window.applyDuplicateGroups = (mode) => {
+    const doomed = new Set(duplicatesMarkedForRemoval());
+    const keeping = duplicateGroups.filter((g) => !g.skipped).length;
+    if (doomed.size === 0) return alert('Nothing is marked for removal.');
+
+    const verb = mode === 'archive' ? 'Archive' : 'Permanently delete';
+    if (!confirm(`${verb} ${doomed.size} article(s)?\n\nThe ${keeping} you picked (highlighted green) stay in the list.`)) return;
+
+    // Indexes refer to the current array, so partition in one pass rather than
+    // splicing repeatedly (which would shift every index after the first removal).
+    const kept = [];
+    const dropped = [];
+    articles.forEach((a, i) => (doomed.has(i) ? dropped : kept).push(a));
+
+    if (mode === 'archive') archivedArticles.push(...dropped);
+    articles = kept;
+
+    duplicateGroups = [];
+    saveState();
+    renderArticles();
+    closeDuplicateGroups();
+    alert(`${mode === 'archive' ? 'Archived' : 'Removed'} ${dropped.length} duplicate article(s). ${articles.length} remain.`);
+};
+
+// --- PRIORITY SOURCES ---------------------------------------------------------
+// Sites we sweep in full: every article they publish in the date window is pulled
+// and judged against the newsletter criteria, instead of hoping the AI's general
+// web search happens to surface them.
+
+const PRIORITY_SOURCES_KEY = 'newsletter_priority_sources';
+
+let prioritySources = [];
+let prioritySourceChecks = {};   // url -> last access-check result
+
+function defaultPrioritySources() {
+    return [
+        { url: 'https://norml.org/', label: 'NORML', restrictions: 'Policy, arrests, legalization. Skip fundraising and internship posts.', enabled: true },
+        { url: 'https://mjbizdaily.com/', label: 'MJBizDaily', restrictions: 'Business and regulatory news. Skip conference promos.', enabled: true },
+        { url: 'https://ganjapreneur.com/', label: 'Ganjapreneur', restrictions: 'Industry news. Skip podcast and sponsored posts.', enabled: true },
+        { url: 'https://stratcann.com/', label: 'StratCann', restrictions: 'Canadian market news.', enabled: true },
+        { url: 'https://hemptoday.net/', label: 'HempToday', restrictions: 'Hemp/CBD supply chain and international hemp policy.', enabled: true },
+        { url: 'https://prohibitionpartners.com/international-cannabis-weekly/', label: 'Prohibition Partners ICW', restrictions: 'International cannabis weekly round-ups.', enabled: true },
+    ];
+}
+
+function loadPrioritySources() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(PRIORITY_SOURCES_KEY) || 'null');
+        if (saved && Array.isArray(saved.sources)) {
+            prioritySources = saved.sources;
+            prioritySourceChecks = saved.checks || {};
+            const since = document.getElementById('priority-since');
+            const until = document.getElementById('priority-until');
+            const limit = document.getElementById('priority-per-source-limit');
+            if (since && saved.since) since.value = saved.since;
+            if (until && saved.until) until.value = saved.until;
+            if (limit && saved.perSourceLimit) limit.value = saved.perSourceLimit;
+            if (saved.collapsed) togglePrioritySourcesBox(true);
+        } else {
+            prioritySources = defaultPrioritySources();
+        }
+    } catch (e) {
+        prioritySources = defaultPrioritySources();
+    }
+    if (!document.getElementById('priority-since')?.value) setPriorityWindowDays(14, { silent: true });
+    renderPrioritySources();
+}
+
+window.savePrioritySources = function () {
+    try {
+        localStorage.setItem(PRIORITY_SOURCES_KEY, JSON.stringify({
+            sources: prioritySources,
+            checks: prioritySourceChecks,
+            since: document.getElementById('priority-since')?.value || '',
+            until: document.getElementById('priority-until')?.value || '',
+            perSourceLimit: document.getElementById('priority-per-source-limit')?.value || 40,
+            collapsed: document.getElementById('priority-sources-body')?.classList.contains('hidden') || false,
+        }));
+    } catch (e) {
+        console.error('Failed to save priority sources', e);
+    }
+    updatePrioritySourcesSummary();
+};
+
+window.togglePrioritySourcesBox = function (forceCollapse) {
+    const body = document.getElementById('priority-sources-body');
+    const caret = document.getElementById('priority-sources-caret');
+    if (!body) return;
+    const collapse = forceCollapse === true ? true : !body.classList.contains('hidden') ;
+    body.classList.toggle('hidden', collapse);
+    if (caret) caret.textContent = collapse ? '▸' : '▾';
+    if (forceCollapse !== true) savePrioritySources();
+};
+
+window.setPriorityWindowDays = function (days, options = {}) {
+    const since = document.getElementById('priority-since');
+    const until = document.getElementById('priority-until');
+    const now = new Date();
+    if (until) until.value = now.toISOString().slice(0, 10);
+    if (since) since.value = new Date(now.getTime() - days * 864e5).toISOString().slice(0, 10);
+    if (!options.silent) savePrioritySources();
+};
+
+function accessBadge(url) {
+    const check = prioritySourceChecks[url];
+    if (!check) return '<span class="text-[0.72rem] text-[#999]">not checked</span>';
+    if (!check.ok) {
+        return `<span class="text-[0.72rem] text-[#c62828] font-semibold" title="${escapeHtml(check.blockReason || 'blocked')}">✕ blocked</span>`;
+    }
+    const label = check.degraded ? '◐ limited' : '✓ readable';
+    const color = check.degraded ? '#e65100' : '#2e7d32';
+    const detail = `${check.method || 'ok'}${check.itemCount ? ` · ${check.itemCount} items` : ''}${check.articlesChecked ? ` · pages ${check.articlesReadable}/${check.articlesChecked}` : ''}`;
+    return `<span class="text-[0.72rem] font-semibold" style="color:${color}" title="${escapeHtml((check.notes || []).join(' '))}">${label}</span><br><span class="text-[0.65rem] text-[#888]">${escapeHtml(detail)}</span>`;
+}
+
+function renderPrioritySources() {
+    const list = document.getElementById('priority-sources-list');
+    if (!list) return;
+
+    if (prioritySources.length === 0) {
+        list.innerHTML = '<div class="p-3 text-[0.85rem] text-[#888]">No sources yet. Use "+ Add site".</div>';
+        updatePrioritySourcesSummary();
+        return;
+    }
+
+    list.innerHTML = prioritySources.map((s, i) => `
+        <div class="grid grid-cols-[36px_1.1fr_1.4fr_150px_70px] gap-2 items-center py-1.5 px-2.5 border-t border-[#eee] ${s.enabled === false ? 'opacity-50' : ''}">
+          <input type="checkbox" ${s.enabled === false ? '' : 'checked'} onchange="updatePrioritySource(${i}, 'enabled', this.checked)" title="Include in sweeps">
+          <div class="flex flex-col gap-0.5">
+            <input type="text" value="${escapeHtml(s.label || '')}" placeholder="Name" class="py-0.5 px-1 text-[0.8rem] font-semibold border border-transparent hover:border-[#ddd] rounded bg-transparent" onchange="updatePrioritySource(${i}, 'label', this.value)">
+            <input type="text" value="${escapeHtml(s.url || '')}" placeholder="https://example.com/" class="py-0.5 px-1 text-[0.72rem] text-[#0d47a1] border border-transparent hover:border-[#ddd] rounded bg-transparent" onchange="updatePrioritySource(${i}, 'url', this.value)">
+          </div>
+          <input type="text" value="${escapeHtml(s.restrictions || '')}" placeholder="e.g. policy only, skip press releases" class="py-1 px-1.5 text-[0.78rem] border border-[#e5e5e5] rounded" onchange="updatePrioritySource(${i}, 'restrictions', this.value)">
+          <div class="leading-tight">${accessBadge(s.url)}</div>
+          <div class="flex gap-1 justify-end">
+            <button type="button" class="header-link-btn text-[0.72rem]" onclick="checkPrioritySources(${i})" title="Check this site only">Check</button>
+            <button type="button" class="header-link-btn text-[0.72rem] text-[#d32f2f]" onclick="removePrioritySource(${i})" title="Remove">✕</button>
+          </div>
+        </div>`).join('');
+
+    updatePrioritySourcesSummary();
+}
+
+function updatePrioritySourcesSummary() {
+    const el = document.getElementById('priority-sources-summary');
+    if (!el) return;
+    const on = prioritySources.filter((s) => s.enabled !== false).length;
+    const checked = prioritySources.filter((s) => prioritySourceChecks[s.url]).length;
+    const blocked = prioritySources.filter((s) => prioritySourceChecks[s.url] && !prioritySourceChecks[s.url].ok).length;
+    el.textContent = `${on}/${prioritySources.length} on` + (checked ? ` · ${checked} checked${blocked ? ` · ${blocked} blocked` : ''}` : '');
+}
+
+window.updatePrioritySource = function (index, field, value) {
+    if (!prioritySources[index]) return;
+    if (field === 'url') {
+        let url = String(value).trim();
+        if (url && !/^https?:\/\//i.test(url)) url = `https://${url}`;
+        // The old URL's access result no longer describes this row.
+        delete prioritySourceChecks[prioritySources[index].url];
+        prioritySources[index].url = url;
+    } else {
+        prioritySources[index][field] = value;
+    }
+    savePrioritySources();
+    if (field === 'url' || field === 'enabled') renderPrioritySources();
+};
+
+window.addPrioritySource = function () {
+    prioritySources.push({ url: '', label: '', restrictions: '', enabled: true });
+    savePrioritySources();
+    renderPrioritySources();
+};
+
+window.removePrioritySource = function (index) {
+    const s = prioritySources[index];
+    if (!s) return;
+    if (s.url && !confirm(`Remove ${s.label || s.url} from priority sources?`)) return;
+    delete prioritySourceChecks[s.url];
+    prioritySources.splice(index, 1);
+    savePrioritySources();
+    renderPrioritySources();
+};
+
+window.resetPrioritySources = function () {
+    if (!confirm('Restore the built-in starter list? Your edits to this list will be lost.')) return;
+    prioritySources = defaultPrioritySources();
+    prioritySourceChecks = {};
+    savePrioritySources();
+    renderPrioritySources();
+};
+
+function setPriorityStatus(message, color = '#2f6e63') {
+    const el = document.getElementById('priority-sources-status');
+    if (!el) return;
+    el.textContent = message || '';
+    el.style.color = color;
+}
+
+/**
+ * Pre-flight: fetch each site and report whether it can be read, by which route, and
+ * whether its actual article pages come back or hit a bot wall. Pass an index to
+ * check a single row.
+ */
+window.checkPrioritySources = async function (index) {
+    const targets = typeof index === 'number'
+        ? [prioritySources[index]].filter(Boolean)
+        : prioritySources.filter((s) => s.url);
+    if (targets.length === 0) return alert('Add at least one site first.');
+
+    const btn = document.getElementById('btn-check-priority-sources');
+    if (typeof index !== 'number' && btn) { btn.disabled = true; btn.textContent = 'Checking...'; }
+    setPriorityStatus(`Checking ${targets.length} site${targets.length > 1 ? 's' : ''}...`, '#666');
+
+    try {
+        const response = await fetch('/api/articles/priority-sources/check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sources: targets }),
+        });
+        const data = await parseJsonResponse(response, 'Access check failed: server returned HTML instead of JSON.');
+        if (!data.success || !Array.isArray(data.results)) throw new Error(data.error || 'Access check failed.');
+
+        data.results.forEach((r) => { prioritySourceChecks[r.url] = r; });
+        savePrioritySources();
+        renderPrioritySources();
+        renderPriorityAccessReport(data.results);
+
+        const okCount = data.results.filter((r) => r.ok && !r.degraded).length;
+        const limited = data.results.filter((r) => r.ok && r.degraded).length;
+        const blocked = data.results.filter((r) => !r.ok).length;
+        setPriorityStatus(`${okCount} fully readable, ${limited} limited, ${blocked} blocked.`, blocked ? '#c62828' : '#2f6e63');
+    } catch (err) {
+        console.error(err);
+        setPriorityStatus(`Access check failed: ${err.message}`, '#c62828');
+    } finally {
+        if (typeof index !== 'number' && btn) { btn.disabled = false; btn.textContent = 'Check access'; }
+    }
+};
+
+function renderPriorityAccessReport(results) {
+    const box = document.getElementById('priority-sources-report');
+    if (!box) return;
+    box.innerHTML = `<div class="font-semibold mb-1.5">Access check</div>` + results.map((r) => {
+        const head = r.ok
+            ? (r.degraded
+                ? `<span style="color:#e65100">◐ ${escapeHtml(r.label)}</span> — limited (${escapeHtml(r.method || '')})`
+                : `<span style="color:#2e7d32">✓ ${escapeHtml(r.label)}</span> — readable via ${escapeHtml(r.method || '')}${r.uaProfile === 'bot' ? ' (needs non-browser User-Agent)' : ''}`)
+            : `<span style="color:#c62828">✕ ${escapeHtml(r.label)}</span> — no route in${r.blockReason ? `: ${escapeHtml(r.blockReason)}` : ''}`;
+        const notes = (r.notes || []).map((n) => `<li>${escapeHtml(n)}</li>`).join('');
+        return `<div class="mb-2"><div>${head}</div>${notes ? `<ul class="list-disc ml-5 text-[0.75rem] text-[#666]">${notes}</ul>` : ''}</div>`;
+    }).join('');
+    showWithClass(box, 'block');
+}
+
+/** Harvest every article in the window from the enabled sites, then evaluate them. */
+window.sweepPrioritySources = async function () {
+    const enabled = prioritySources.filter((s) => s.enabled !== false && s.url);
+    if (enabled.length === 0) return alert('No sites are enabled. Tick at least one row.');
+
+    const since = document.getElementById('priority-since')?.value || '';
+    const until = document.getElementById('priority-until')?.value || '';
+    const perSourceLimit = parseInt(document.getElementById('priority-per-source-limit')?.value, 10) || 40;
+    const model = document.getElementById('ai-model').value;
+
+    const btn = document.getElementById('btn-sweep-priority-sources');
+    btn.disabled = true;
+    btn.textContent = 'Sweeping...';
+    setPriorityStatus(`Pulling articles from ${enabled.length} site${enabled.length > 1 ? 's' : ''}...`, '#666');
+
+    try {
+        const response = await fetch('/api/articles/priority-sources/sweep', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sources: enabled,
+                since,
+                until,
+                model,
+                perSourceLimit,
+                existingUrls: articles.map((a) => a.url).filter(Boolean),
+                extraInstructions: document.getElementById('step2-query')?.value.trim() || '',
+            }),
+        });
+
+        const data = await parseJsonResponse(
+            response,
+            'Sweep failed: server returned HTML instead of JSON (often a timeout). Try a shorter date window or fewer sites.',
+        );
+
+        if (!data.success) {
+            showAiFailureAlert('Priority sweep failed', data);
+            setPriorityStatus('Sweep failed.', '#c62828');
+            return;
+        }
+
+        renderPrioritySweepReport(data);
+
+        const newArticles = data.articles || [];
+        if (newArticles.length === 0) {
+            setPriorityStatus(`Swept ${data.harvested || 0} articles — none met the criteria.`, '#e65100');
+            return;
+        }
+
+        // Same merge path as an AI search: dedupe, assign ids, save immediately.
+        const existingUrlSet = new Set(articles.map((a) => normalizeUrl(a.url)));
+        const fresh = newArticles.filter((a) => !existingUrlSet.has(normalizeUrl(a.url)));
+        const maxId = articles.reduce((max, a) => Math.max(max, a.id || 0), 0);
+        const addedAt = new Date().toISOString();
+        fresh.forEach((a, i) => { a.id = maxId + i + 1; a.addedAt = addedAt; });
+
+        articles = articles.concat(fresh);
+        saveState();
+        renderArticles();
+
+        setPriorityStatus(`Swept ${data.harvested} articles, kept ${fresh.length}. Verifying...`, '#2f6e63');
+
+        // Skip verification for Google-News redirect links — they can't be resolved
+        // server-side and verification would drop them.
+        const verifiable = fresh.filter((a) => !a.isRedirectLink);
+        if (verifiable.length) {
+            try {
+                const verified = await verifyArticlesRemote(verifiable);
+
+                // Verification can rewrite a URL (redirect resolution), so title is
+                // carried as a second key — otherwise a rewritten article looks like
+                // one that was dropped.
+                const lookup = new Map();
+                verified.forEach((a) => {
+                    lookup.set(normalizeUrl(a.url), a);
+                    if (a.title) lookup.set(`t:${a.title.toLowerCase().trim()}`, a);
+                });
+                const find = (a) => lookup.get(normalizeUrl(a.url)) || lookup.get(`t:${String(a.title || '').toLowerCase().trim()}`);
+
+                const verifiableIds = new Set(verifiable.map((a) => a.id));
+                articles = articles
+                    .map((a) => {
+                        const v = find(a);
+                        return v ? { ...a, ...v, id: a.id, addedAt: a.addedAt, notes: a.notes } : a;
+                    })
+                    // Drop the ones verification rejected — a dead URL, or a real
+                    // publication date outside the newsletter's window.
+                    .filter((a) => !(verifiableIds.has(a.id) && a.addedAt === addedAt && !find(a)));
+
+                saveState();
+                renderArticles();
+            } catch (verifyErr) {
+                console.error('Sweep verification failed (articles kept):', verifyErr);
+            }
+        }
+        setPriorityStatus(`Swept ${data.harvested} articles, added ${articles.filter(a=>a.addedAt===addedAt).length} to the list.` + verifyReportSuffix(), '#2f6e63');
+    } catch (err) {
+        console.error(err);
+        if (isAnthropicCreditError(err.message)) {
+            showAiFailureAlert('Priority sweep failed — Claude credits', { error: err.message });
+        } else {
+            setPriorityStatus(`Sweep failed: ${err.message}`, '#c62828');
+        }
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sweep sources';
+    }
+};
+
+function renderPrioritySweepReport(data) {
+    const box = document.getElementById('priority-sources-report');
+    if (!box) return;
+    const rows = (data.sources || []).map((s) => {
+        const status = s.blocked
+            ? '<span style="color:#c62828">no route in</span>'
+            : `via ${escapeHtml(s.method || '?')}${s.degraded ? ' <span style="color:#e65100">(headlines only)</span>' : ''}`;
+        return `<li><b>${escapeHtml(s.label)}</b> — ${s.harvested} article${s.harvested === 1 ? '' : 's'} ${status}</li>`;
+    }).join('');
+    const errors = (data.evalErrors || []).length
+        ? `<div class="mt-1.5 text-[#c62828]">Some batches failed to evaluate: ${escapeHtml(data.evalErrors.join('; '))}</div>`
+        : '';
+    box.innerHTML = `<div class="font-semibold mb-1.5">Sweep: ${data.harvested} pulled, ${data.kept} met the criteria</div>
+        <ul class="list-disc ml-5 text-[0.78rem]">${rows}</ul>${errors}`;
+    showWithClass(box, 'block');
+}
+
 // Stage 2 (URL verification + categorization) is a separate, slower request from
 // the AI search itself, so a timeout there never throws away search results the
 // user already paid Claude credits for. Callers should already have the raw
 // articles rendered/saved before calling this.
+/**
+ * The date window every intake path is held to. Lives on the Priority Sources row so
+ * there is one control rather than one per feature; verification uses it to drop
+ * articles whose real publication date falls outside the newsletter's period.
+ */
+function currentDateWindow() {
+    return {
+        since: document.getElementById('priority-since')?.value || '',
+        until: document.getElementById('priority-until')?.value || '',
+    };
+}
+
+let lastVerifyReport = null;
+
 async function verifyArticlesRemote(rawArticles) {
+    const { since, until } = currentDateWindow();
     const response = await fetch('/api/articles/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ articles: rawArticles }),
+        body: JSON.stringify({ articles: rawArticles, since, until }),
     });
     const data = await parseJsonResponse(
         response,
@@ -6462,7 +7053,21 @@ async function verifyArticlesRemote(rawArticles) {
     if (!data.success || !Array.isArray(data.articles)) {
         throw new Error(data.error || 'Verification failed.');
     }
+    lastVerifyReport = {
+        corrected: data.datesCorrected || [],
+        dropped: data.droppedOutOfWindow || [],
+        window: `${since || 'any'} to ${until || 'today'}`,
+    };
     return data.articles;
+}
+
+/** Short sentence describing any date corrections/drops from the last verify pass. */
+function verifyReportSuffix() {
+    if (!lastVerifyReport) return '';
+    const parts = [];
+    if (lastVerifyReport.corrected.length) parts.push(`corrected ${lastVerifyReport.corrected.length} wrong date(s)`);
+    if (lastVerifyReport.dropped.length) parts.push(`dropped ${lastVerifyReport.dropped.length} published outside ${lastVerifyReport.window}`);
+    return parts.length ? ` — ${parts.join(', ')}.` : '';
 }
 
 // --- MODIFY EXISTING ARTICLES ---
@@ -6561,7 +7166,19 @@ async function modifyExistingArticles() {
 
             const results = await callModifyArticlesBatch(prompt, payload, model);
 
-            const count = Math.min(results.length, batch.length);
+            // Results are matched to articles BY POSITION, so a short response would
+            // shift every later article onto the wrong row and silently overwrite it
+            // (e.g. when an instruction tempts the model into dropping items, which
+            // Modify must never do — it can only edit fields in place).
+            if (results.length !== batch.length) {
+                throw new Error(
+                    `The AI returned ${results.length} articles for a batch of ${batch.length}. `
+                    + 'Nothing was changed, to avoid overwriting the wrong rows. '
+                    + 'Modify can only edit articles in place — to drop redundant coverage, use "Group same stories".',
+                );
+            }
+
+            const count = batch.length;
             for (let i = 0; i < count; i++) {
                 const originalIndex = batch[i].index;
                 const original = articles[originalIndex];
@@ -6641,6 +7258,9 @@ function saveRecentPrompt(prompt) {
 
 loadRecentPrompts();
 populateSavedDropdown();
+loadPrioritySources();
+
+syncStatsVisibility();
 
 let aiQuerySyncTimeout = null;
 function syncAiQueryFromInput(sourceEl) {

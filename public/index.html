@@ -27,6 +27,8 @@
         <div class="step" data-step="6">Confirmation</div>
       </div>
       <div class="nav-search-button-wrapper ml-auto pl-4 flex items-center gap-3">
+        <!-- Article counts ride the nav row: sticky for free, and no extra vertical space -->
+        <div id="article-stats" class="article-stats hidden"></div>
         <div class="flex flex-col items-end relative">
             <div class="flex items-center gap-2">
               <label for="ai-model" class="text-xs font-semibold text-[#16423c]">AI Model</label>
@@ -147,9 +149,6 @@
         <div class="card-header">
           <div class="flex justify-between items-center">
             <h2 class="font-bold">Review & Select Articles</h2>
-            <div id="article-stats" class="article-stats">
-              <span class="stat-item">Total: 0</span>
-            </div>
           </div>
           <p class="text-muted">Review generated articles, assign categories, and select for newsletter.</p>
         </div>
@@ -181,6 +180,60 @@
           </div>
         </div>
 
+        <!-- Priority Sources: sites swept in full, every article evaluated -->
+        <div class="py-4 px-5 border-b border-[#eee]">
+          <div class="flex items-center gap-3 mb-2.5 flex-wrap">
+            <button type="button" class="text-[0.95rem] font-semibold text-[#333] flex items-center gap-1.5 bg-transparent border-0 cursor-pointer p-0" onclick="togglePrioritySourcesBox()">
+              <span id="priority-sources-caret">▾</span> Priority Sources
+            </button>
+            <span class="text-[0.78rem] text-[#666]">Every article these sites publish in the window gets pulled and judged against the newsletter criteria.</span>
+            <span id="priority-sources-summary" class="text-[0.78rem] text-[#2f6e63] font-medium ml-auto"></span>
+          </div>
+
+          <div id="priority-sources-body">
+            <div class="flex items-end gap-3 flex-wrap mb-3">
+              <div class="flex flex-col gap-1">
+                <label class="text-[0.72rem] font-semibold text-[#555]">From</label>
+                <input type="date" id="priority-since" class="py-1 px-2 text-[0.85rem] border border-[#ccc] rounded" onchange="savePrioritySources()">
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="text-[0.72rem] font-semibold text-[#555]">To</label>
+                <input type="date" id="priority-until" class="py-1 px-2 text-[0.85rem] border border-[#ccc] rounded" onchange="savePrioritySources()">
+              </div>
+              <div class="flex gap-1">
+                <button type="button" class="btn btn-sm btn-outline text-[0.75rem] py-1 px-2" onclick="setPriorityWindowDays(7)">7d</button>
+                <button type="button" class="btn btn-sm btn-outline text-[0.75rem] py-1 px-2" onclick="setPriorityWindowDays(14)">14d</button>
+                <button type="button" class="btn btn-sm btn-outline text-[0.75rem] py-1 px-2" onclick="setPriorityWindowDays(30)">30d</button>
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="text-[0.72rem] font-semibold text-[#555]">Max per site</label>
+                <input type="number" id="priority-per-source-limit" min="5" max="60" value="40" class="w-20 py-1 px-2 text-[0.85rem] border border-[#ccc] rounded" onchange="savePrioritySources()">
+              </div>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="checkPrioritySources()" id="btn-check-priority-sources" title="Fetch each site and report whether it blocks us, and by which route it can be read">Check access</button>
+              <button type="button" class="btn btn-primary btn-sm" onclick="sweepPrioritySources()" id="btn-sweep-priority-sources" title="Pull every article in the window from the enabled sites and evaluate them">Sweep sources</button>
+            </div>
+
+            <div class="border border-[#e0ddd5] rounded-lg overflow-hidden">
+              <div class="grid grid-cols-[36px_1.1fr_1.4fr_150px_70px] gap-2 items-center py-1.5 px-2.5 bg-[#f6f4ef] text-[0.72rem] font-semibold text-[#555] uppercase tracking-wide">
+                <span title="Include this site in sweeps">On</span>
+                <span>Site</span>
+                <span>Restrictions (fed to the AI)</span>
+                <span>Access</span>
+                <span></span>
+              </div>
+              <div id="priority-sources-list"></div>
+            </div>
+
+            <div class="flex items-center gap-3 mt-2.5 flex-wrap">
+              <button type="button" class="btn btn-outline btn-sm" onclick="addPrioritySource()">+ Add site</button>
+              <button type="button" class="btn btn-sm text-[#666] border border-[#ccc] bg-transparent" onclick="resetPrioritySources()" title="Restore the built-in starter list">Reset to defaults</button>
+              <span id="priority-sources-status" class="text-[0.82rem] font-medium"></span>
+            </div>
+
+            <div id="priority-sources-report" class="hidden mt-3 p-3 bg-[#f8f7f3] border border-[#e0ddd5] rounded-lg text-[0.8rem] text-[#444]"></div>
+          </div>
+        </div>
+
         <!-- AI Query Box with Toggle -->
         <div class="py-4 px-5 border-b border-[#eee]">
           <div class="flex items-center gap-4 mb-2.5">
@@ -205,6 +258,7 @@
           <button type="button" class="btn btn-sm text-[#f57c00] border-solid border-2 border-[#f57c00] bg-transparent" onclick="archiveSelectedArticles()" title="Move checked rows to archive">Archive checked</button>
           <button type="button" class="btn btn-sm text-[#1976d2] border-solid border-2 border-[#1976d2] bg-transparent" onclick="openSelectedArticles()" title="Open checked articles in new tabs">Open selected</button>
           <button type="button" class="btn btn-sm text-[#8e24aa] border-solid border-2 border-[#8e24aa] bg-transparent" onclick="fixRedirectLinks()" title="Convert any Google Redirect URLs to direct publisher links for existing articles">Fix Redirects</button>
+          <button type="button" class="btn btn-sm text-[#00796b] border-solid border-2 border-[#00796b] bg-transparent" onclick="findDuplicateStories()" id="btn-find-duplicates" title="Find different publishers covering the same story, and pick one to keep from each group">Group same stories</button>
           <span class="text-[0.8rem] text-[#666] hidden sm:inline">Select column → All/None → Open, Remove or Archive</span>
           <label class="text-[0.8rem] text-[#555]">Batch:</label>
           <select id="batch-filter-select" onchange="setBatchFilter(this.value); renderArticles();" class="py-1 px-2 text-[0.85rem]">
@@ -499,6 +553,32 @@
     <div class="mt-4.5 flex gap-2 justify-end">
       <button type="button" class="btn btn-secondary btn-sm" onclick="closeAddArticleModal()">Cancel</button>
       <button type="button" class="btn btn-primary btn-sm" onclick="addArticleFromModal()">Add at top</button>
+    </div>
+  </div>
+</div>
+
+<!-- Duplicate Story Groups Modal -->
+<div id="duplicate-groups-modal" onclick="if (event.target===this) closeDuplicateGroups()" class="hidden fixed inset-0 bg-[rgba(22,34,30,0.5)] z-[2000] items-center justify-center p-4 backdrop-blur-md">
+  <div onclick="event.stopPropagation()" class="bg-white rounded-[20px] p-6 max-w-4xl w-full max-h-[88vh] shadow-[0_20px_50px_rgba(22,34,30,0.18)] border border-[#84725333] flex flex-col">
+    <div class="flex justify-between items-start mb-1">
+      <div>
+        <h3 class="font-bold text-[1.15rem] text-[#16423c]">Same-story groups</h3>
+        <p class="text-[0.82rem] text-[#666] mt-0.5">Different publishers covering one event. The article you select in each group is the one that <b>stays</b> — every other article in that group goes.</p>
+      </div>
+      <button type="button" class="text-[1.4rem] text-[#888] bg-transparent border-0 cursor-pointer leading-none" onclick="closeDuplicateGroups()" title="Close">&times;</button>
+    </div>
+    <div class="flex items-center gap-3 text-[0.78rem] text-[#666] border-y border-[#f0eee8] py-1.5">
+      <span>Don't want to touch a group? Tick its <b>Keep all</b> box.</span>
+      <button type="button" class="header-link-btn text-[0.78rem]" onclick="setAllDuplicateSkip(true)">Keep all groups</button>
+      <span>/</span>
+      <button type="button" class="header-link-btn text-[0.78rem]" onclick="setAllDuplicateSkip(false)">Reset</button>
+    </div>
+    <div id="duplicate-groups-body" class="flex-1 overflow-y-auto my-3 pr-1"></div>
+    <div class="flex items-center gap-3 pt-3 border-t border-[#eee] flex-wrap">
+      <span id="duplicate-groups-summary" class="text-[0.85rem] text-[#555] mr-auto"></span>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="closeDuplicateGroups()">Cancel</button>
+      <button type="button" id="btn-dupe-archive" class="btn btn-sm text-[#f57c00] border-solid border-2 border-[#f57c00] bg-transparent" onclick="applyDuplicateGroups('archive')" title="Move the articles you did NOT pick to the archive (recoverable)">Archive the others</button>
+      <button type="button" id="btn-dupe-remove" class="btn btn-sm text-[#d32f2f] border-solid border-2 border-[#d32f2f] bg-transparent" onclick="applyDuplicateGroups('remove')" title="Delete the articles you did NOT pick">Delete the others</button>
     </div>
   </div>
 </div>
