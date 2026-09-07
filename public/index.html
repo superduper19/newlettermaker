@@ -544,7 +544,8 @@
 </div>
 
 <!-- Add Article Modal -->
-<div id="add-article-modal" onclick="if (event.target===this) window.closeAddArticleModal&&closeAddArticleModal()" class="hidden fixed inset-0 bg-[rgba(0,0,0,0.4)] z-1000 items-center justify-center flex-col">
+<!-- No backdrop-click close: this holds typed input, and a stray click outside would discard it. Cancel only. -->
+<div id="add-article-modal" class="hidden fixed inset-0 bg-[rgba(0,0,0,0.4)] z-1000 items-center justify-center flex-col">
   <div class="bg-white rounded-lg p-5 max-w-105 w-[90%] shadow-[0_4px_20px_rgba(0,0,0,0.15)]">
     <h3 class="m-0 mb-4 text-[1.1rem]">Add article (at top)</h3>
     <div class="flex flex-col gap-2.5">
@@ -582,7 +583,8 @@
 </div>
 
 <!-- Duplicate Story Groups Modal -->
-<div id="duplicate-groups-modal" onclick="if (event.target===this) closeDuplicateGroups()" class="hidden fixed inset-0 bg-[rgba(22,34,30,0.5)] z-[2000] items-center justify-center p-4 backdrop-blur-md">
+<!-- Same reasoning: this holds per-group keep/None choices that a stray click would throw away. -->
+<div id="duplicate-groups-modal" class="hidden fixed inset-0 bg-[rgba(22,34,30,0.5)] z-[2000] items-center justify-center p-4 backdrop-blur-md">
   <div onclick="event.stopPropagation()" class="bg-white rounded-[20px] p-6 max-w-4xl w-full max-h-[88vh] shadow-[0_20px_50px_rgba(22,34,30,0.18)] border border-[#84725333] flex flex-col">
     <div class="flex justify-between items-start mb-1">
       <div>
