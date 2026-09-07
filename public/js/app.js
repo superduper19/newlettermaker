@@ -6229,13 +6229,12 @@ function getSummaryArticlesForCategory(category) {
 
 function getSelectedRankCounts() {
     let counts = { MED: 0, THC: 0, CBD: 0, INV: 0 };
-    const coolFindUrls = new Set((laterCoolArticles || []).map(a => a.url));
 
     articles.forEach(a => {
         if (a.selected === false) return;
-        if (a.status === 'COOL FINDS') return;
-        if (coolFindUrls.has(a.url)) return;
 
+        // Cool finds count toward every category they carry a rank in — they run in
+        // each newsletter, so they belong in each newsletter's count.
         ['MED', 'THC', 'CBD', 'INV'].forEach(cat => {
             let r = String((a.ranks && a.ranks[cat]) || '').trim().toUpperCase();
             if (r === 'Y' || r === 'YM' || r === 'M' || /^\d+$/.test(r)) {
