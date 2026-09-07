@@ -6282,11 +6282,20 @@ function updateStats() {
     const totalCount = articles.length;
     const yCount = articles.filter((a) => normalizeArticleStatus(a.status) === 'Y').length;
 
+    // Cool finds are deliberately absent from the MED/THC/CBD/INV counts, because
+    // those track each newsletter's ranked section and cool finds never appear there
+    // — they go in the Interesting Finds block, which every newsletter carries. Without
+    // a count of their own they showed up nowhere but Total, which read as "not counted".
+    const coolCount = articles.filter((a) => normalizeArticleStatus(a.status) === 'COOL FINDS').length;
+    const laterCoolCount = articles.filter((a) => normalizeArticleStatus(a.status) === 'LATER COOL').length;
+    const coolTitle = `Cool finds — they appear in the Interesting Finds section of all four newsletters, so they are not in the MED/THC/CBD/INV counts${laterCoolCount ? `. Plus ${laterCoolCount} held as Later Cool` : ''}`;
+
     const statsHtml =
         `${sessionLabel}
         <span class="stat-item bg-[#e0f7fa] text-[#006064]" title="Articles checked in the Select column">Sel: ${selectedCount}</span>
         <span class="stat-item font-semibold" title="Every article brought back, including unchecked ones">Total: ${totalCount}</span>
         <span class="stat-item bg-[#e8f5e9] text-[#1b5e20] font-semibold" title="Articles whose Status is Y">Y: ${yCount}</span>
+        ${coolCount || laterCoolCount ? `<span class="stat-item bg-[#f3e5f5] text-[#6a1b9a]" title="${coolTitle}">Cool: ${coolCount}${laterCoolCount ? ` (+${laterCoolCount})` : ''}</span>` : ''}
         <span class="stat-item bg-[#e3f2fd] text-[#0d47a1]" title="Articles with rank # in MED">MED: ${counts.MED}</span>
         <span class="stat-item bg-[#e8f5e9] text-[#1b5e20]" title="Articles with rank # in THC">THC: ${counts.THC}</span>
         <span class="stat-item bg-[#fff3e0] text-[#e65100]" title="Articles with rank # in CBD">CBD: ${counts.CBD}</span>
